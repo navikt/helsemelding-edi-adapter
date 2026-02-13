@@ -306,7 +306,7 @@ private suspend fun ApplicationCall.respondInternalError(t: Throwable) {
     respond(
         status = InternalServerError,
         message = ErrorMessage(
-            error = "Internal server error",
+            error = InternalServerError.description,
             errorCode = 500,
             requestId = callId ?: "unknown"
         )
