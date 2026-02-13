@@ -577,7 +577,7 @@ class RoutesSpec : StringSpec(
                 response.status shouldBe InternalServerError
                 val errorMessage = response.body<ErrorMessage>()
 
-                errorMessage.error shouldBe "Internal server error"
+                errorMessage.error shouldBe InternalServerError.description
                 errorMessage.errorCode shouldBe 500
                 errorMessage.requestId shouldBe "unknown"
                 errorMessage.stackTrace shouldBe null
