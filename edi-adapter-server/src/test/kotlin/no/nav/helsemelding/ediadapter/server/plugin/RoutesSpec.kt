@@ -41,6 +41,7 @@ import io.ktor.server.routing.Route
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.TestApplicationBuilder
 import io.ktor.server.testing.testApplication
+import no.nav.helsemelding.ediadapter.model.ErrorMessage
 import no.nav.helsemelding.ediadapter.model.Metadata
 import no.nav.helsemelding.ediadapter.server.auth.AuthConfig.Companion.getTokenSupportConfig
 import no.nav.helsemelding.ediadapter.server.config
@@ -157,11 +158,19 @@ class RoutesSpec : StringSpec(
 
             testApplication {
                 installExternalRoutes(ediClient)
+                client = createJsonEnabledClient()
 
                 val response = client.get("/api/v1/messages?receiverHerIds=1&messagesToFetch=0")
 
                 response.status shouldBe BadRequest
-                response.bodyAsText() shouldBe "Messages to fetch must be a number between 1 and 100"
+
+                val errorMessage = response.body<ErrorMessage>()
+
+                errorMessage.error shouldBe "Messages to fetch must be a number between 1 and 100"
+                errorMessage.errorCode shouldBe 400
+                errorMessage.requestId shouldBe "unknown"
+                errorMessage.stackTrace shouldBe null
+                errorMessage.validationErrors shouldBe null
             }
         }
 
@@ -170,11 +179,18 @@ class RoutesSpec : StringSpec(
 
             testApplication {
                 installExternalRoutes(ediClient)
+                client = createJsonEnabledClient()
 
                 val response = client.get("/api/v1/messages?receiverHerIds=1&messagesToFetch=101")
 
                 response.status shouldBe BadRequest
-                response.bodyAsText() shouldBe "Messages to fetch must be a number between 1 and 100"
+                val errorMessage = response.body<ErrorMessage>()
+
+                errorMessage.error shouldBe "Messages to fetch must be a number between 1 and 100"
+                errorMessage.errorCode shouldBe 400
+                errorMessage.requestId shouldBe "unknown"
+                errorMessage.stackTrace shouldBe null
+                errorMessage.validationErrors shouldBe null
             }
         }
 
@@ -215,11 +231,18 @@ class RoutesSpec : StringSpec(
 
             testApplication {
                 installExternalRoutes(ediClient)
+                client = createJsonEnabledClient()
 
                 val response = client.get("/api/v1/messages?receiverHerIds=1&orderBy=3")
 
                 response.status shouldBe BadRequest
-                response.bodyAsText() shouldBe "Order by must be 1 (Ascending) or 2 (Descending)"
+                val errorMessage = response.body<ErrorMessage>()
+
+                errorMessage.error shouldBe "Order by must be 1 (Ascending) or 2 (Descending)"
+                errorMessage.errorCode shouldBe 400
+                errorMessage.requestId shouldBe "unknown"
+                errorMessage.stackTrace shouldBe null
+                errorMessage.validationErrors shouldBe null
             }
         }
 
@@ -264,11 +287,18 @@ class RoutesSpec : StringSpec(
 
             testApplication {
                 installExternalRoutes(ediClient)
+                client = createJsonEnabledClient()
 
                 val response = client.get("/api/v1/messages?receiverHerIds=1&includeMetadata=foobar")
 
                 response.status shouldBe BadRequest
-                response.bodyAsText() shouldBe "Include metadata must be 'true' or 'false'"
+                val errorMessage = response.body<ErrorMessage>()
+
+                errorMessage.error shouldBe "Include metadata must be 'true' or 'false'"
+                errorMessage.errorCode shouldBe 400
+                errorMessage.requestId shouldBe "unknown"
+                errorMessage.stackTrace shouldBe null
+                errorMessage.validationErrors shouldBe null
             }
         }
 
@@ -531,6 +561,7 @@ class RoutesSpec : StringSpec(
 
             testApplication {
                 installExternalRoutes(ediClient)
+                client = createJsonEnabledClient()
 
                 val response = client.post("/api/v1/messages") {
                     contentType(Json)
@@ -544,6 +575,13 @@ class RoutesSpec : StringSpec(
                 }
 
                 response.status shouldBe InternalServerError
+                val errorMessage = response.body<ErrorMessage>()
+
+                errorMessage.error shouldBe "Internal server error"
+                errorMessage.errorCode shouldBe 500
+                errorMessage.requestId shouldBe "unknown"
+                errorMessage.stackTrace shouldBe null
+                errorMessage.validationErrors shouldBe null
             }
         }
 
