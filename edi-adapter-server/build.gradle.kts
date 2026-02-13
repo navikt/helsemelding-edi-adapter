@@ -67,6 +67,8 @@ dependencies {
     implementation(libs.ktor.server.netty)
     implementation(libs.kotlin.logging)
     implementation(libs.token.validation.ktor.v3)
+    implementation(libs.opentelemetry.logback.mdc)
+
     testImplementation(testLibs.bundles.kotest)
     testImplementation(testLibs.kotest.assertions.arrow)
     testImplementation(testLibs.kotest.extensions.jvm)

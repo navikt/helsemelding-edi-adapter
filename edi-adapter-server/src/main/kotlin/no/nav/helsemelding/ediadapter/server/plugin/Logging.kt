@@ -6,11 +6,12 @@ import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.path
+import no.nav.helsemelding.ediadapter.server.util.ExtendedLogger
 import org.slf4j.LoggerFactory
 import org.slf4j.event.Level
 
 fun Application.configureCallLogging() {
-    val logger = LoggerFactory.getLogger("CallLogging")
+    val logger = ExtendedLogger(LoggerFactory.getLogger("CallLogging"))
 
     intercept(ApplicationCallPipeline.Monitoring) {
         val start = System.currentTimeMillis()
