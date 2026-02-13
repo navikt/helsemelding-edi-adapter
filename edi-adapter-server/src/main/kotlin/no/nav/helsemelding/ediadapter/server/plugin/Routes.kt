@@ -15,8 +15,10 @@ import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
+import io.ktor.content.TextContent
 import io.ktor.http.ContentType.Application.Json
 import io.ktor.http.HttpHeaders.Location
+import io.ktor.http.HttpStatusCode.Companion.BadRequest
 import io.ktor.http.HttpStatusCode.Companion.InternalServerError
 import io.ktor.http.Parameters
 import io.ktor.http.ParametersBuilder
@@ -24,6 +26,7 @@ import io.ktor.http.contentType
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.auth.authenticate
+import io.ktor.server.plugins.callid.callId
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
@@ -32,6 +35,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 import io.micrometer.prometheus.PrometheusMeterRegistry
+import no.nav.helsemelding.ediadapter.model.ErrorMessage
 import no.nav.helsemelding.ediadapter.model.Metadata
 import no.nav.helsemelding.ediadapter.model.PostAppRecRequest
 import no.nav.helsemelding.ediadapter.model.PostMessageRequest
@@ -127,7 +131,7 @@ fun Route.externalRoutes(ediClient: HttpClient) {
                         status = response.status
                     )
                 },
-                { e: MessageError -> call.respond(e.toContent()) }
+                { e: MessageError -> call.respondError(e.toContent()) }
             ) { t: Throwable -> call.respondInternalError(t) }
         }
 
@@ -142,7 +146,7 @@ fun Route.externalRoutes(ediClient: HttpClient) {
                         status = response.status
                     )
                 },
-                { e: MessageError -> call.respond(e.toContent()) }
+                { e: MessageError -> call.respondError(e.toContent()) }
             ) { t: Throwable -> call.respondInternalError(t) }
         }
 
@@ -157,7 +161,7 @@ fun Route.externalRoutes(ediClient: HttpClient) {
                         status = response.status
                     )
                 },
-                { e: MessageError -> call.respond(e.toContent()) }
+                { e: MessageError -> call.respondError(e.toContent()) }
             ) { t: Throwable -> call.respondInternalError(t) }
         }
 
@@ -172,7 +176,7 @@ fun Route.externalRoutes(ediClient: HttpClient) {
                         status = response.status
                     )
                 },
-                { e: MessageError -> call.respond(e.toContent()) }
+                { e: MessageError -> call.respondError(e.toContent()) }
             ) { t: Throwable -> call.respondInternalError(t) }
         }
 
@@ -187,7 +191,7 @@ fun Route.externalRoutes(ediClient: HttpClient) {
                         status = response.status
                     )
                 },
-                { e: MessageError -> call.respond(e.toContent()) }
+                { e: MessageError -> call.respondError(e.toContent()) }
             ) { t: Throwable -> call.respondInternalError(t) }
         }
 
@@ -205,7 +209,7 @@ fun Route.externalRoutes(ediClient: HttpClient) {
                         status = response.status
                     )
                 },
-                { e: MessageError -> call.respond(e.toContent()) }
+                { e: MessageError -> call.respondError(e.toContent()) }
             ) { t: Throwable -> call.respondInternalError(t) }
         }
 
@@ -226,7 +230,7 @@ fun Route.externalRoutes(ediClient: HttpClient) {
                         status = response.status
                     )
                 },
-                { e: MessageError -> call.respond(e.toContent()) }
+                { e: MessageError -> call.respondError(e.toContent()) }
             ) { t: Throwable -> call.respondInternalError(t) }
         }
 
@@ -242,7 +246,7 @@ fun Route.externalRoutes(ediClient: HttpClient) {
                         status = response.status
                     )
                 },
-                { e: MessageError -> call.respond(e.toContent()) }
+                { e: MessageError -> call.respondError(e.toContent()) }
             ) { t: Throwable -> call.respondInternalError(t) }
         }
     }
@@ -285,7 +289,26 @@ private fun Raise<ValidationError>.messageQueryParams(
 private fun ParametersBuilder.appendIfPresent(name: String, value: Any?) =
     value?.let { append(name, it.toString()) }
 
+private suspend fun ApplicationCall.respondError(message: TextContent) {
+    val status = message.status ?: BadRequest
+    respond(
+        status = status,
+        message = ErrorMessage(
+            error = message.text,
+            errorCode = status.value,
+            requestId = callId ?: "unknown"
+        )
+    )
+}
+
 private suspend fun ApplicationCall.respondInternalError(t: Throwable) {
     log.error(t) { "Unexpected error while processing request" }
-    respond(InternalServerError)
+    respond(
+        status = InternalServerError,
+        message = ErrorMessage(
+            error = InternalServerError.description,
+            errorCode = 500,
+            requestId = callId ?: "unknown"
+        )
+    )
 }
