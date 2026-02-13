@@ -42,7 +42,7 @@ spec:
     timeout: 10
     failureThreshold: 10
   replicas:
-    min: 1
+    min: 2
     max: 4
     cpuThresholdPercentage: 50
   resources:
