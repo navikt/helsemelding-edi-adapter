@@ -76,6 +76,8 @@ spec:
           cluster: dev-gcp
         - application: epj-simulator
           cluster: dev-gcp
+        - application: inbound-message-service
+          cluster: dev-gcp
   env:
     - name: NHN_BASE_URL
       value: "https://api.tjener.test.melding.nhn.no"
