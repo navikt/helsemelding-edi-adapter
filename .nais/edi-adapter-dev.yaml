@@ -72,8 +72,6 @@ spec:
         - application: azure-token-generator
           namespace: aura
           cluster: dev-gcp
-        - application: state-service
-          cluster: dev-gcp
         - application: epj-simulator
           cluster: dev-gcp
         - application: inbound-message-service
