@@ -90,6 +90,7 @@ value class Timeout(val value: Long)
 data class HttpClient(
     val connectionTimeout: Timeout,
     val apiVersionHeader: ApiVersionHeader,
+    val apiVersionHeaderV2: ApiVersionHeader,
     val sourceSystemHeader: SourceSystemHeader,
     val acceptTypeHeader: AcceptTypeHeader,
     val logLevel: LogLevel

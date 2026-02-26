@@ -37,6 +37,13 @@ import no.nav.helsemelding.ediadapter.model.Metadata
 import no.nav.helsemelding.ediadapter.model.PostAppRecRequest
 import no.nav.helsemelding.ediadapter.model.PostMessageRequest
 import no.nav.helsemelding.ediadapter.model.StatusInfo
+import no.nav.helsemelding.ediadapter.model.v2.GetNoticesRequest
+import no.nav.helsemelding.ediadapter.model.v2.MshConfiguration
+import no.nav.helsemelding.ediadapter.model.v2.Notice
+import no.nav.helsemelding.ediadapter.model.v2.NoticeType.NEW_MESSAGE
+import no.nav.helsemelding.ediadapter.model.v2.PostMshConfigurationRequest
+import no.nav.helsemelding.ediadapter.model.v2.ReceiveNotificationChannel.API_POLLING
+import no.nav.helsemelding.ediadapter.model.v2.RejectMessageFilters
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.text.Charsets.UTF_8
@@ -146,6 +153,52 @@ class EdiAdapterClientSpec : StringSpec(
 
             val getMessagesRequest = GetMessagesRequest(receiverHerIds = listOf(1))
             val errorMessage = ediClient.getMessages(getMessagesRequest).shouldBeLeft()
+            errorMessage shouldBeEqualUsingFields errorMessage500
+        }
+
+        @OptIn(ExperimentalEdiAdapterApi::class)
+        "getNotices returns message notices and no messageError if response is 200" {
+            val notice = listOf(
+                Notice(
+                    noticeType = NEW_MESSAGE,
+                    receiverHerId = 1
+                )
+            )
+            val ediClient = ediAdapterClient {
+                fakeScopedAuthHttpClient { request ->
+                    request.method shouldBe HttpMethod.Get
+                    request.url.fullPath shouldStartWith "/api/v2/messages/notices?receiverHerIds=1"
+
+                    respond(
+                        content = JsonUtil.encodeToString(notice),
+                        headers = headersOf(ContentType, Json.toString()),
+                        status = HttpStatusCode.OK
+                    )
+                }
+            }
+
+            val getNoticesRequest = GetNoticesRequest(receiverHerIds = listOf(1))
+            val messages = ediClient.getNotices(getNoticesRequest).shouldBeRight()
+            messages shouldContainExactly notice
+        }
+
+        @OptIn(ExperimentalEdiAdapterApi::class)
+        "getNotices returns messageError and no message notices if response is 500" {
+            val ediClient = ediAdapterClient {
+                fakeScopedAuthHttpClient { request ->
+                    request.method shouldBe HttpMethod.Get
+                    request.url.fullPath shouldStartWith "/api/v2/messages/notices?receiverHerIds=1"
+
+                    respond(
+                        content = JsonUtil.encodeToString(errorMessage500),
+                        headers = headersOf(ContentType, Json.toString()),
+                        status = HttpStatusCode.InternalServerError
+                    )
+                }
+            }
+
+            val getNoticesRequest = GetNoticesRequest(receiverHerIds = listOf(1))
+            val errorMessage = ediClient.getNotices(getNoticesRequest).shouldBeLeft()
             errorMessage shouldBeEqualUsingFields errorMessage500
         }
 
@@ -441,6 +494,66 @@ class EdiAdapterClientSpec : StringSpec(
             shouldThrow<CancellationException> {
                 ediClient.getMessage(Uuid.random())
             }
+        }
+
+        @OptIn(ExperimentalEdiAdapterApi::class)
+        "postMshConfiguration returns unit and no messageError if response is 204" {
+            val ediClient = ediAdapterClient {
+                fakeScopedAuthHttpClient { request ->
+                    request.method shouldBe HttpMethod.Post
+                    request.url.fullPath shouldBe "/api/v2/mshConfiguration"
+
+                    respond(
+                        content = "",
+                        headers = headersOf(ContentType, Json.toString()),
+                        status = HttpStatusCode.NoContent
+                    )
+                }
+            }
+
+            val request = PostMshConfigurationRequest(
+                listOf(
+                    MshConfiguration(
+                        herId = 1,
+                        receiveNotificationChannel = API_POLLING,
+                        receiveRefusedMessageNotices = false,
+                        rejectMessageFilters = RejectMessageFilters(
+                            messageFunction = listOf("string"),
+                            xmlNamespace = listOf("string")
+                        )
+                    )
+                )
+            )
+            val unit = ediClient.postMshConfiguration(request).shouldBeRight()
+            unit shouldBe Unit
+        }
+
+        @OptIn(ExperimentalEdiAdapterApi::class)
+        "postMshConfiguration returns messageError if response is 500" {
+            val ediClient = ediAdapterClient {
+                fakeScopedAuthHttpClient { request ->
+                    request.method shouldBe HttpMethod.Post
+                    request.url.fullPath shouldBe "/api/v2/mshConfiguration"
+
+                    respond(
+                        content = JsonUtil.encodeToString(errorMessage500),
+                        headers = headersOf(ContentType, Json.toString()),
+                        status = HttpStatusCode.InternalServerError
+                    )
+                }
+            }
+
+            val request = PostMshConfigurationRequest(
+                listOf(
+                    MshConfiguration(
+                        herId = 1,
+                        receiveNotificationChannel = API_POLLING,
+                        receiveRefusedMessageNotices = false
+                    )
+                )
+            )
+            val errorMessage = ediClient.postMshConfiguration(request).shouldBeLeft()
+            errorMessage shouldBeEqualUsingFields errorMessage500
         }
     }
 )

@@ -8,6 +8,7 @@ Internal consumers typically interact with this API through `edi-adapter-client`
 **Key Takeaways:**
 
 * Internal consumers use `/api/v1/*` only.
+* New and experimental features are available under `/api/v2/*`.
 * The adapter manages all communication and error handling with NHN.
 * Authentication and certificates are configured in `ediClient`.
 * Metrics are collected through `PrometheusMeterRegistry`.
@@ -21,7 +22,9 @@ Internal consumers typically interact with this API through `edi-adapter-client`
 
 ## Our API (internal)
 
-All routes exposed by this adapter are under `/api/v1`.
+Routes are versioned under `/api/v1` and `/api/v2`. The v2 routes expose new and experimental features available in the NHN EDI 2.0 API.
+
+### v1
 
 | Method | Path                                                      | Description                          | Calls external NHN endpoint                      |
 |--------|-----------------------------------------------------------|--------------------------------------|--------------------------------------------------|
@@ -34,6 +37,13 @@ All routes exposed by this adapter are under `/api/v1`.
 | POST   | `/api/v1/messages/{messageId}/apprec/{apprecSenderHerId}` | Send application receipt             | `POST /Messages/{id}/apprec/{appRecSenderHerId}` |
 | PUT    | `/api/v1/messages/{messageId}/read/{herId}`               | Mark message as read                 | `PUT /Messages/{id}/read/{herId}`                |
 
+### v2
+
+| Method | Path                       | Description                               | Calls external NHN endpoint  |
+|--------|----------------------------|-------------------------------------------|------------------------------|
+| GET    | `/api/v2/messages/notices` | Fetch notices for given receiver(s)       | `GET /Messages/notices`      |
+| POST   | `/api/v2/mshConfiguration` | Update MSH configuration for given HerIds | `POST /MshConfiguration`     |
+
 ## API documentation (Swagger)
 
 The EDI Adapter exposes OpenAPI/Swagger documentation for its internal API.
@@ -42,13 +52,13 @@ When running the server locally, the documentation is available at:
 
 - `/swagger`
 
-The Swagger UI reflects the `/api/v1/*` endpoints exposed by this service and can be used to explore and test the API locally.
+The Swagger UI reflects the `/api/v1/*` and `/api/v2/*` endpoints exposed by this service and can be used to explore and test the API locally.
 
 Swagger is only intended for local development and internal use.
 
 ## Implementation overview
 
-Adapter API routes are defined in `externalRoutes` under `/api/v1`.
+Adapter API routes are defined in `externalRoutes`. v1 routes are registered under `/api/v1` and v2 routes under `/api/v2`.
 Each route maps directly to the corresponding NHN endpoint.
 
 Metrics and health checks are provided through `internalRoutes`.

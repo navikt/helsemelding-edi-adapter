@@ -26,6 +26,7 @@ private val log = KotlinLogging.logger {}
 
 data class Dependencies(
     val httpClient: HttpClient,
+    val httpClientV2: HttpClient,
     val meterRegistry: PrometheusMeterRegistry
 )
 
@@ -77,6 +78,32 @@ private fun httpClient(
     }
 }
 
+private fun httpClientV2(
+    config: Config,
+    jwtProvider: DpopJwtProvider,
+    dpopTokenUtil: DpopTokenUtil,
+    clientEngine: HttpClientEngine
+): HttpClient = HttpClient(clientEngine) {
+    install(HttpTimeout) {
+        connectTimeoutMillis = config.httpClient.connectionTimeout.value
+    }
+    install(Logging) { level = config.httpClient.logLevel }
+    install(ContentNegotiation) { json() }
+    install(DpopAuth) {
+        dpopJwtProvider = jwtProvider
+        loadTokens = { dpopTokenUtil.obtainDpopTokens() }
+    }
+    defaultRequest {
+        url(config.nhn.baseUrl.toString())
+
+        val httpClient = config.httpClient
+
+        header(API_VERSION, httpClient.apiVersionHeaderV2.value)
+        header(NHN_SOURCE_SYSTEM, httpClient.sourceSystemHeader.value)
+        header(Accept, httpClient.acceptTypeHeader.value)
+    }
+}
+
 suspend fun ResourceScope.dependencies(): Dependencies = awaitAll {
     val config = config()
 
@@ -89,9 +116,11 @@ suspend fun ResourceScope.dependencies(): Dependencies = awaitAll {
     val dpopTokenUtil = DpopTokenUtil(config, dpopJwtProvider, httpTokenClient)
 
     val httpClient = async { httpClient(config, dpopJwtProvider, dpopTokenUtil, httpClientEngine) }
+    val httpClientV2 = async { httpClientV2(config, dpopJwtProvider, dpopTokenUtil, httpClientEngine) }
 
     Dependencies(
         httpClient.await(),
+        httpClientV2.await(),
         metricsRegistry.await()
     )
 }

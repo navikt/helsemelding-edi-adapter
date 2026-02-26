@@ -9,6 +9,7 @@ import io.ktor.client.call.body
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.HttpResponseData
 import io.ktor.client.request.get
@@ -54,6 +55,7 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation as ClientCon
 import kotlinx.serialization.json.Json as JsonUtil
 
 private const val MESSAGE1 = "https://example.com/messages/1"
+private const val ROOT_V2 = "/api/v2"
 
 class RoutesSpec : StringSpec(
     {
@@ -725,6 +727,444 @@ class RoutesSpec : StringSpec(
                 response.status shouldBe Unauthorized
             }
         }
+
+        "GET /messages/notices with single receiver her id returns EDI response" {
+            val ediClient = fakeEdiClient {
+                it.url.fullPath shouldBe "/Messages/notices?ReceiverHerIds=1"
+                respond(
+                    """[{
+                    "id": "100",
+                    "noticeType": "RefusedMessage",
+                    "contentType": "application/xml",
+                    "receiverHerId": 1,
+                    "senderHerId": 2,
+                    "businessDocumentId": "10",
+                    "businessDocumentGenDate": "2008-11-26T19:31:17.281+00:00",
+                    "isAppRec": false,
+                    "sourceSystem": "helsemelding EDI 2.0 edi-adapter, v1.0",
+                    "refusedReason": "Receiver does not support the message type: ABC"
+                }]"""
+                )
+            }
+
+            testApplication {
+                installExternalRoutes(ediClientV2 = ediClient)
+
+                val response = client.get("$ROOT_V2/messages/notices?receiverHerIds=1")
+
+                response.status shouldBe OK
+                response.bodyAsText() shouldBe """[{
+                    "id": "100",
+                    "noticeType": "RefusedMessage",
+                    "contentType": "application/xml",
+                    "receiverHerId": 1,
+                    "senderHerId": 2,
+                    "businessDocumentId": "10",
+                    "businessDocumentGenDate": "2008-11-26T19:31:17.281+00:00",
+                    "isAppRec": false,
+                    "sourceSystem": "helsemelding EDI 2.0 edi-adapter, v1.0",
+                    "refusedReason": "Receiver does not support the message type: ABC"
+                }]"""
+            }
+        }
+
+        "GET /messages/notices with multiple receiver her ids returns EDI response" {
+            val ediClient = fakeEdiClient {
+                it.url.fullPath shouldBe "/Messages/notices?ReceiverHerIds=1&ReceiverHerIds=2"
+                respond(
+                    """[
+                    {"id":"100", "noticeType": "NewMessage", "receiverHerId": "1"}, 
+                    {"id":"200", "noticeType": "RefusedMessage", "receiverHerId": "2"}
+                ]"""
+                )
+            }
+
+            testApplication {
+                installExternalRoutes(ediClientV2 = ediClient)
+
+                val response = client.get("$ROOT_V2/messages/notices?receiverHerIds=1&receiverHerIds=2")
+
+                response.status shouldBe OK
+                response.bodyAsText() shouldBe """[
+                    {"id":"100", "noticeType": "NewMessage", "receiverHerId": "1"}, 
+                    {"id":"200", "noticeType": "RefusedMessage", "receiverHerId": "2"}
+                ]"""
+            }
+        }
+
+        "GET /messages/notices with receiver her id and message notices to fetch returns EDI response" {
+            val ediClient = fakeEdiClient {
+                it.url.fullPath shouldBe "/Messages/notices?ReceiverHerIds=1&MessagesToFetch=1"
+                respond("""[{"id":"100", "noticeType": "NewMessage", "receiverHerId": "1"}]""")
+            }
+
+            testApplication {
+                installExternalRoutes(ediClientV2 = ediClient)
+
+                val response = client.get("$ROOT_V2/messages/notices?receiverHerIds=1&messagesToFetch=1")
+
+                response.status shouldBe OK
+                response.bodyAsText() shouldBe """[{"id":"100", "noticeType": "NewMessage", "receiverHerId": "1"}]"""
+            }
+        }
+
+        "GET /messages/notices with receiver her id and message notices to fetch (0) returns error" {
+            val ediClient = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV2 = ediClient)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V2/messages/notices?receiverHerIds=1&messagesToFetch=0")
+
+                response.status shouldBe BadRequest
+
+                val errorMessage = response.body<ErrorMessage>()
+
+                errorMessage.error shouldBe "Messages to fetch must be a number between 1 and 100"
+                errorMessage.errorCode shouldBe 400
+                errorMessage.requestId shouldBe "unknown"
+                errorMessage.stackTrace shouldBe null
+                errorMessage.validationErrors shouldBe null
+            }
+        }
+
+        "GET /messages/notices with receiver her id and message notices to fetch (101) returns error" {
+            val ediClient = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV2 = ediClient)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V2/messages/notices?receiverHerIds=1&messagesToFetch=101")
+
+                response.status shouldBe BadRequest
+                val errorMessage = response.body<ErrorMessage>()
+
+                errorMessage.error shouldBe "Messages to fetch must be a number between 1 and 100"
+                errorMessage.errorCode shouldBe 400
+                errorMessage.requestId shouldBe "unknown"
+                errorMessage.stackTrace shouldBe null
+                errorMessage.validationErrors shouldBe null
+            }
+        }
+
+        "GET /messages/notices with blank receiver her id returns 400" {
+            val ediClient = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV2 = ediClient)
+
+                val response = client.get("$ROOT_V2/messages/notices?receiverHerIds=")
+                response.status shouldBe BadRequest
+                response.bodyAsText() shouldContain "Receiver her ids"
+            }
+        }
+
+        "GET /messages/notices without receiver her id returns 400" {
+            val ediClient = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV2 = ediClient)
+
+                val response = client.get("$ROOT_V2/messages/notices")
+
+                response.status shouldBe BadRequest
+                response.bodyAsText() shouldContain "Receiver her ids"
+            }
+        }
+
+        "GET /messages/notices returns EDI response with authentication" {
+            val ediClient = fakeEdiClient {
+                it.url.fullPath shouldBe "/Messages/notices?ReceiverHerIds=1"
+                respond("""[{"id":"100", "receiverHerId": "1"}]""")
+            }
+
+            testApplication {
+                installExternalRoutes(ediClientV2 = ediClient, useAuthentication = true)
+
+                val response = client.getWithAuth("$ROOT_V2/messages/notices?receiverHerIds=1", getToken)
+
+                response.status shouldBe OK
+                response.bodyAsText() shouldBe """[{"id":"100", "receiverHerId": "1"}]"""
+            }
+        }
+
+        "GET /messages/notices returns Unauthorised if access token is missing" {
+            val ediClient = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV2 = ediClient, useAuthentication = true)
+
+                val response = client.get("$ROOT_V2/messages/notices?id=1")
+
+                response.status shouldBe Unauthorized
+            }
+        }
+
+        "GET /messages/notices returns Unauthorised if access token is invalid" {
+            val ediClient = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV2 = ediClient, useAuthentication = true)
+
+                val response = client.getWithAuth("$ROOT_V2/messages/notices?id=1", getToken, invalidAudience)
+
+                response.status shouldBe Unauthorized
+            }
+        }
+
+        "POST /mshConfiguration returns 204 no content from EDI response" {
+            val ediClient = fakeEdiClient { request ->
+                request.url.fullPath shouldBe "/MshConfiguration"
+                respond(
+                    content = "",
+                    status = NoContent
+                )
+            }
+
+            testApplication {
+                installExternalRoutes(ediClientV2 = ediClient)
+                client = createJsonEnabledClient()
+
+                val body =
+                    """
+                {
+                  "mshConfigurations": [
+                    {
+                      "herId": 123456,
+                      "receiveNotificationChannel": "ApiPolling",
+                      "receiveRefusedMessageNotices": true,
+                      "rejectMessageFilters": {
+                        "MessageFunction": [
+                          "string"
+                        ],
+                        "XmlNamespace": [
+                          "string"
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """
+
+                val response = client.post("$ROOT_V2/mshConfiguration") {
+                    contentType(Json)
+                    setBody(body)
+                }
+
+                response.status shouldBe NoContent
+                response.bodyAsText() shouldBe ""
+            }
+        }
+
+        "POST /mshConfiguration with empty body returns 415" {
+            testApplication {
+                installExternalRoutes(ediClientV2 = fakeEdiClient { error("Should not be called") })
+
+                val response = client.post("$ROOT_V2/mshConfiguration") {
+                    contentType(Json)
+                    setBody("")
+                }
+
+                response.status shouldBe UnsupportedMediaType
+            }
+        }
+
+        "POST /mshConfiguration without body returns 415" {
+            testApplication {
+                installExternalRoutes(ediClientV2 = fakeEdiClient { error("Should not be called") })
+
+                val response = client.post("$ROOT_V2/mshConfiguration")
+
+                response.status shouldBe UnsupportedMediaType
+            }
+        }
+
+        "POST /mshConfiguration with invalid body (json) returns 400" {
+            testApplication {
+                installExternalRoutes(ediClientV2 = fakeEdiClient { error("Should not be called") })
+
+                val response = client.post("$ROOT_V2/mshConfiguration") {
+                    contentType(Json)
+                    setBody("{ not-valid-json }")
+                }
+
+                response.status shouldBe BadRequest
+            }
+        }
+
+        "POST /mshConfiguration with invalid receiveNotificationChannel returns 400" {
+            testApplication {
+                installExternalRoutes(ediClientV2 = fakeEdiClient { error("Should not be called") })
+                client = createJsonEnabledClient()
+
+                val body =
+                    """
+                {
+                  "mshConfigurations": [
+                    {
+                      "herId": 123456,
+                      "receiveNotificationChannel": "ABC",
+                      "receiveRefusedMessageNotices": true,
+                      "rejectMessageFilters": {
+                        "MessageFunction": [
+                          "string"
+                        ],
+                        "XmlNamespace": [
+                          "string"
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """
+
+                val response = client.post("$ROOT_V2/mshConfiguration") {
+                    contentType(Json)
+                    setBody(body)
+                }
+
+                response.status shouldBe BadRequest
+            }
+        }
+
+        "POST /mshConfiguration returns 500 on unexpected exception" {
+            val ediClient = fakeEdiClient { throw RuntimeException("boom") }
+
+            testApplication {
+                installExternalRoutes(ediClientV2 = ediClient)
+                client = createJsonEnabledClient()
+
+                val response = client.post("$ROOT_V2/mshConfiguration") {
+                    contentType(Json)
+                    setBody(
+                        """
+                    {
+                      "mshConfigurations": [
+                        {
+                          "herId": 123456,
+                          "receiveNotificationChannel": "ApiPolling",
+                          "receiveRefusedMessageNotices": true,
+                          "rejectMessageFilters": {
+                            "MessageFunction": [
+                              "string"
+                            ],
+                            "XmlNamespace": [
+                              "string"
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                        """
+                    )
+                }
+
+                response.status shouldBe InternalServerError
+                val errorMessage = response.body<ErrorMessage>()
+
+                errorMessage.error shouldBe InternalServerError.description
+                errorMessage.errorCode shouldBe 500
+                errorMessage.requestId shouldBe "unknown"
+                errorMessage.stackTrace shouldBe null
+                errorMessage.validationErrors shouldBe null
+            }
+        }
+
+        "POST /mshConfiguration returns EDI response with authentication" {
+            val ediClient = fakeEdiClient { request ->
+                request.url.fullPath shouldBe "/MshConfiguration"
+                respond(
+                    content = "",
+                    status = NoContent
+                )
+            }
+
+            testApplication {
+                installExternalRoutes(ediClientV2 = ediClient, useAuthentication = true)
+                client = createJsonEnabledClient()
+
+                val body =
+                    """
+                {
+                  "mshConfigurations": [
+                    {
+                      "herId": 123456,
+                      "receiveNotificationChannel": "ApiPolling",
+                      "receiveRefusedMessageNotices": true
+                    }
+                  ]
+                }
+                """
+
+                val response = client.postWithAuth("$ROOT_V2/mshConfiguration", getToken) {
+                    contentType(Json)
+                    setBody(body)
+                }
+
+                response.status shouldBe NoContent
+                response.bodyAsText() shouldBe ""
+            }
+        }
+
+        "POST /mshConfiguration returns Unauthorised if access token is missing" {
+            val ediClient = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV2 = ediClient, useAuthentication = true)
+                client = createJsonEnabledClient()
+
+                val body =
+                    """
+                {
+                  "mshConfigurations": [
+                    {
+                      "herId": 123456,
+                      "receiveNotificationChannel": "ApiPolling",
+                      "receiveRefusedMessageNotices": true
+                    }
+                  ]
+                }
+                """
+
+                val response = client.post("$ROOT_V2/mshConfiguration") {
+                    contentType(Json)
+                    setBody(body)
+                }
+
+                response.status shouldBe Unauthorized
+            }
+        }
+
+        "POST /mshConfiguration returns Unauthorised if access token is invalid" {
+            val ediClient = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV2 = ediClient, useAuthentication = true)
+                client = createJsonEnabledClient()
+
+                val body =
+                    """
+                {
+                  "mshConfigurations": [
+                    {
+                      "herId": 123456,
+                      "receiveNotificationChannel": "ApiPolling",
+                      "receiveRefusedMessageNotices": true
+                    }
+                  ]
+                }
+                """
+
+                val response = client.postWithAuth("$ROOT_V2/mshConfiguration", getToken, invalidAudience) {
+                    contentType(Json)
+                    setBody(body)
+                }
+
+                response.status shouldBe Unauthorized
+            }
+        }
     }
 )
 
@@ -736,7 +1176,8 @@ private fun ApplicationTestBuilder.createJsonEnabledClient(): HttpClient =
     }
 
 private fun TestApplicationBuilder.installExternalRoutes(
-    ediClient: HttpClient,
+    ediClient: HttpClient = fakeEdiClient { error("Should not be called") },
+    ediClientV2: HttpClient = fakeEdiClient { error("Should not be called") },
     useAuthentication: Boolean = false
 ) {
     install(ContentNegotiation) {
@@ -755,7 +1196,7 @@ private fun TestApplicationBuilder.installExternalRoutes(
     }
 
     routing {
-        val externalRoutes: Route.() -> Unit = { externalRoutes(ediClient) }
+        val externalRoutes: Route.() -> Unit = { externalRoutes(ediClient, ediClientV2) }
 
         if (useAuthentication) {
             authenticate(issuer, build = externalRoutes)
@@ -788,6 +1229,20 @@ private suspend fun HttpClient.getWithAuth(
             Authorization,
             "Bearer ${getToken(audience).serialize()}"
         )
+    }
+
+private suspend fun HttpClient.postWithAuth(
+    url: String,
+    getToken: (String) -> SignedJWT,
+    audience: String = config().azureAuth.appScope.value,
+    block: HttpRequestBuilder.() -> Unit = {}
+): HttpResponse =
+    post(url) {
+        header(
+            Authorization,
+            "Bearer ${getToken(audience).serialize()}"
+        )
+        block()
     }
 
 private fun base64EncodedDocument(): String =
