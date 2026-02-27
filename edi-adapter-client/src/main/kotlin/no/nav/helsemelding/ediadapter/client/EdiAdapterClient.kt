@@ -21,14 +21,14 @@ import no.nav.helsemelding.ediadapter.model.ApprecInfo
 import no.nav.helsemelding.ediadapter.model.ErrorMessage
 import no.nav.helsemelding.ediadapter.model.GetBusinessDocumentResponse
 import no.nav.helsemelding.ediadapter.model.GetMessagesRequest
+import no.nav.helsemelding.ediadapter.model.GetNoticesRequest
 import no.nav.helsemelding.ediadapter.model.Message
 import no.nav.helsemelding.ediadapter.model.Metadata
+import no.nav.helsemelding.ediadapter.model.Notice
 import no.nav.helsemelding.ediadapter.model.PostAppRecRequest
 import no.nav.helsemelding.ediadapter.model.PostMessageRequest
+import no.nav.helsemelding.ediadapter.model.PostMshConfigurationRequest
 import no.nav.helsemelding.ediadapter.model.StatusInfo
-import no.nav.helsemelding.ediadapter.model.v2.GetNoticesRequest
-import no.nav.helsemelding.ediadapter.model.v2.Notice
-import no.nav.helsemelding.ediadapter.model.v2.PostMshConfigurationRequest
 import kotlin.uuid.Uuid
 
 private val log = KotlinLogging.logger {}

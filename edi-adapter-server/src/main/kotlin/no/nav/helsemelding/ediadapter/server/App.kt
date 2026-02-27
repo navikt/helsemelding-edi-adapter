@@ -29,7 +29,7 @@ fun main() = SuspendApp {
                 Netty,
                 port = config().server.port.value,
                 preWait = config().server.preWait,
-                module = ediAdapterModule(deps.httpClient, deps.httpClientV2, deps.meterRegistry)
+                module = ediAdapterModule(deps.httpClientV1, deps.httpClientV2, deps.meterRegistry)
             )
 
             awaitCancellation()
@@ -39,7 +39,7 @@ fun main() = SuspendApp {
 }
 
 internal fun ediAdapterModule(
-    ediClient: HttpClient,
+    ediClientV1: HttpClient,
     ediClientV2: HttpClient,
     meterRegistry: PrometheusMeterRegistry
 ): Application.() -> Unit {
@@ -47,7 +47,7 @@ internal fun ediAdapterModule(
         configureMetrics(meterRegistry)
         configureContentNegotiation()
         configureAuthentication()
-        configureRoutes(ediClient, ediClientV2, meterRegistry)
+        configureRoutes(ediClientV1, ediClientV2, meterRegistry)
         configureCallLogging()
         configureOpenApi()
     }

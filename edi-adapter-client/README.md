@@ -25,7 +25,7 @@ Some client methods are annotated with `@ExperimentalEdiAdapterApi`. These wrap 
 | `getNotices(GetNoticesRequest)`                     | Fetch message notices for receiver(s)     |
 | `postMshConfiguration(PostMshConfigurationRequest)` | Update MSH configuration for given HerIds |
 
-Calling these methods without opting in is a **compile-time error**, See [ExperimentalEdiAdapterApi](src/main/kotlin/no/nav/helsemelding/ediadapter/client/ExperimentalEdiAdapterApi.kt) 
+Calling these methods without opting in is a **compile-time warning**, See [ExperimentalEdiAdapterApi](src/main/kotlin/no/nav/helsemelding/ediadapter/client/ExperimentalEdiAdapterApi.kt) 
 for more information on how to opt in.
 
 ## Relationship to other modules

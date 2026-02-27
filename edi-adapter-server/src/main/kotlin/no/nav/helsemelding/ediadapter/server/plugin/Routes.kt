@@ -40,7 +40,7 @@ import no.nav.helsemelding.ediadapter.model.ErrorMessage
 import no.nav.helsemelding.ediadapter.model.Metadata
 import no.nav.helsemelding.ediadapter.model.PostAppRecRequest
 import no.nav.helsemelding.ediadapter.model.PostMessageRequest
-import no.nav.helsemelding.ediadapter.model.v2.PostMshConfigurationRequest
+import no.nav.helsemelding.ediadapter.model.PostMshConfigurationRequest
 import no.nav.helsemelding.ediadapter.server.MessageError
 import no.nav.helsemelding.ediadapter.server.ValidationError
 import no.nav.helsemelding.ediadapter.server.apprecSenderHerId
@@ -87,7 +87,7 @@ private const val MESSAGES_TO_FETCH = "MessagesToFetch"
 private const val ORDER_BY = "OrderBy"
 
 fun Application.configureRoutes(
-    ediClient: HttpClient,
+    ediClientV1: HttpClient,
     ediClientV2: HttpClient,
     registry: PrometheusMeterRegistry
 ) {
@@ -96,7 +96,7 @@ fun Application.configureRoutes(
         internalRoutes(registry)
 
         authenticate(config().azureAuth.issuer.value) {
-            externalRoutes(ediClient, ediClientV2)
+            externalRoutes(ediClientV1, ediClientV2)
         }
     }
 }
@@ -125,13 +125,13 @@ fun Route.internalRoutes(registry: PrometheusMeterRegistry) {
     }
 }
 
-fun Route.externalRoutes(ediClient: HttpClient, ediClientV2: HttpClient) {
+fun Route.externalRoutes(ediClientV1: HttpClient, ediClientV2: HttpClient) {
     route("/api/v1") {
         get(GET_MESSAGES, getMessagesDocs) {
             recover(
                 {
                     val params = messageQueryParams(call)
-                    val response = ediClient.get("Messages") { url { parameters.appendAll(params) } }
+                    val response = ediClientV1.get("Messages") { url { parameters.appendAll(params) } }
                     call.respondText(
                         text = response.bodyAsText(),
                         contentType = Json,
@@ -146,7 +146,7 @@ fun Route.externalRoutes(ediClient: HttpClient, ediClientV2: HttpClient) {
             recover(
                 {
                     val messageId = messageId(call)
-                    val response = ediClient.get("Messages/$messageId")
+                    val response = ediClientV1.get("Messages/$messageId")
                     call.respondText(
                         text = response.bodyAsText(),
                         contentType = Json,
@@ -161,7 +161,7 @@ fun Route.externalRoutes(ediClient: HttpClient, ediClientV2: HttpClient) {
             recover(
                 {
                     val messageId = messageId(call)
-                    val response = ediClient.get("Messages/$messageId/business-document")
+                    val response = ediClientV1.get("Messages/$messageId/business-document")
                     call.respondText(
                         text = response.bodyAsText(),
                         contentType = Json,
@@ -176,7 +176,7 @@ fun Route.externalRoutes(ediClient: HttpClient, ediClientV2: HttpClient) {
             recover(
                 {
                     val messageId = messageId(call)
-                    val response = ediClient.get("Messages/$messageId/status")
+                    val response = ediClientV1.get("Messages/$messageId/status")
                     call.respondText(
                         text = response.bodyAsText(),
                         contentType = Json,
@@ -191,7 +191,7 @@ fun Route.externalRoutes(ediClient: HttpClient, ediClientV2: HttpClient) {
             recover(
                 {
                     val messageId = messageId(call)
-                    val response = ediClient.get("Messages/$messageId/apprec")
+                    val response = ediClientV1.get("Messages/$messageId/apprec")
                     call.respondText(
                         text = response.bodyAsText(),
                         contentType = Json,
@@ -206,7 +206,7 @@ fun Route.externalRoutes(ediClient: HttpClient, ediClientV2: HttpClient) {
             val message = call.receive<PostMessageRequest>()
             recover(
                 {
-                    val response = ediClient.post("Messages") {
+                    val response = ediClientV1.post("Messages") {
                         contentType(Json)
                         setBody(message)
                     }
@@ -227,7 +227,7 @@ fun Route.externalRoutes(ediClient: HttpClient, ediClientV2: HttpClient) {
                     val messageId = messageId(call)
                     val senderHerId = apprecSenderHerId(call)
 
-                    val response = ediClient.post("Messages/$messageId/apprec/$senderHerId") {
+                    val response = ediClientV1.post("Messages/$messageId/apprec/$senderHerId") {
                         contentType(Json)
                         setBody(appRec)
                     }
@@ -246,7 +246,7 @@ fun Route.externalRoutes(ediClient: HttpClient, ediClientV2: HttpClient) {
                 {
                     val messageId = messageId(call)
                     val herId = herId(call)
-                    val response = ediClient.put("Messages/$messageId/read/$herId")
+                    val response = ediClientV1.put("Messages/$messageId/read/$herId")
                     call.respondText(
                         text = response.bodyAsText(),
                         contentType = Json,

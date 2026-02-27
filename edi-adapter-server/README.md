@@ -101,14 +101,14 @@ configureAuthentication()
 In Routes.kt change the following:
 ```kotlin
 authenticate(config().azureAuth.issuer.value) {
-    externalRoutes(ediClient)
+    externalRoutes(ediClientV1, ediClientV2)
 }
 ```
 
 to:
 ```kotlin
 // authenticate(config().azureAuth.issuer.value) {
-    externalRoutes(ediClient)
+    externalRoutes(ediClientV1, ediClientV2)
 // }
 ```
 

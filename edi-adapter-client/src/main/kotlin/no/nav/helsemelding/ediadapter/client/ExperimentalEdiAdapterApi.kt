@@ -11,7 +11,7 @@ package no.nav.helsemelding.ediadapter.client
  * `@OptIn(ExperimentalEdiAdapterApi::class)`, or by using the compiler argument
  * `-opt-in=kotlin.time.ExperimentalEdiAdapterApi`.
  */
-@RequiresOptIn(level = RequiresOptIn.Level.ERROR)
+@RequiresOptIn(level = RequiresOptIn.Level.WARNING)
 @Retention(AnnotationRetention.BINARY)
 @Target(AnnotationTarget.FUNCTION)
 annotation class ExperimentalEdiAdapterApi

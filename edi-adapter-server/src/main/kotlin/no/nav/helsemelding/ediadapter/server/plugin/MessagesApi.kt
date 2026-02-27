@@ -16,16 +16,16 @@ import no.nav.helsemelding.ediadapter.model.EbXmlInfo
 import no.nav.helsemelding.ediadapter.model.GetBusinessDocumentResponse
 import no.nav.helsemelding.ediadapter.model.Message
 import no.nav.helsemelding.ediadapter.model.Metadata
+import no.nav.helsemelding.ediadapter.model.MshConfiguration
+import no.nav.helsemelding.ediadapter.model.Notice
+import no.nav.helsemelding.ediadapter.model.NoticeType
 import no.nav.helsemelding.ediadapter.model.OrderBy
 import no.nav.helsemelding.ediadapter.model.PostAppRecRequest
 import no.nav.helsemelding.ediadapter.model.PostMessageRequest
+import no.nav.helsemelding.ediadapter.model.PostMshConfigurationRequest
+import no.nav.helsemelding.ediadapter.model.ReceiveNotificationChannel
+import no.nav.helsemelding.ediadapter.model.RejectMessageFilters
 import no.nav.helsemelding.ediadapter.model.StatusInfo
-import no.nav.helsemelding.ediadapter.model.v2.MshConfiguration
-import no.nav.helsemelding.ediadapter.model.v2.Notice
-import no.nav.helsemelding.ediadapter.model.v2.NoticeType
-import no.nav.helsemelding.ediadapter.model.v2.PostMshConfigurationRequest
-import no.nav.helsemelding.ediadapter.model.v2.ReceiveNotificationChannel
-import no.nav.helsemelding.ediadapter.model.v2.RejectMessageFilters
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
