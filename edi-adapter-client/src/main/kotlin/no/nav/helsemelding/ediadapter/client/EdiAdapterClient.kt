@@ -15,15 +15,19 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.client.statement.request
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.HttpStatusCode.Companion.NoContent
 import io.ktor.http.contentType
 import no.nav.helsemelding.ediadapter.model.ApprecInfo
 import no.nav.helsemelding.ediadapter.model.ErrorMessage
 import no.nav.helsemelding.ediadapter.model.GetBusinessDocumentResponse
 import no.nav.helsemelding.ediadapter.model.GetMessagesRequest
+import no.nav.helsemelding.ediadapter.model.GetNoticesRequest
 import no.nav.helsemelding.ediadapter.model.Message
 import no.nav.helsemelding.ediadapter.model.Metadata
+import no.nav.helsemelding.ediadapter.model.Notice
 import no.nav.helsemelding.ediadapter.model.PostAppRecRequest
 import no.nav.helsemelding.ediadapter.model.PostMessageRequest
+import no.nav.helsemelding.ediadapter.model.PostMshConfigurationRequest
 import no.nav.helsemelding.ediadapter.model.StatusInfo
 import kotlin.uuid.Uuid
 
@@ -33,6 +37,9 @@ interface EdiAdapterClient {
     suspend fun getApprecInfo(id: Uuid): Either<ErrorMessage, List<ApprecInfo>>
 
     suspend fun getMessages(getMessagesRequest: GetMessagesRequest): Either<ErrorMessage, List<Message>>
+
+    @ExperimentalEdiAdapterApi
+    suspend fun getNotices(getNoticesRequest: GetNoticesRequest): Either<ErrorMessage, List<Notice>>
 
     suspend fun postMessage(postMessagesRequest: PostMessageRequest): Either<ErrorMessage, Metadata>
 
@@ -49,6 +56,9 @@ interface EdiAdapterClient {
     ): Either<ErrorMessage, Metadata>
 
     suspend fun markMessageAsRead(id: Uuid, herId: Int): Either<ErrorMessage, Boolean>
+
+    @ExperimentalEdiAdapterApi
+    suspend fun postMshConfiguration(postMshConfigurationRequest: PostMshConfigurationRequest): Either<ErrorMessage, Unit>
 
     fun close()
 }
@@ -70,6 +80,16 @@ class HttpEdiAdapterClient(
 
     override suspend fun getMessages(getMessagesRequest: GetMessagesRequest): Either<ErrorMessage, List<Message>> {
         val url = "$ediAdapterUrl/api/v1/messages?${getMessagesRequest.toUrlParams()}"
+        val response = httpClient.get(url) {
+            contentType(ContentType.Application.Json)
+        }.withLogging()
+
+        return handleResponse(response)
+    }
+
+    @ExperimentalEdiAdapterApi
+    override suspend fun getNotices(getNoticesRequest: GetNoticesRequest): Either<ErrorMessage, List<Notice>> {
+        val url = "$ediAdapterUrl/api/v2/messages/notices?${getNoticesRequest.toUrlParams()}"
         val response = httpClient.get(url) {
             contentType(ContentType.Application.Json)
         }.withLogging()
@@ -134,8 +154,23 @@ class HttpEdiAdapterClient(
             contentType(ContentType.Application.Json)
         }.withLogging()
 
-        return if (response.status == HttpStatusCode.NoContent) {
+        return if (response.status == NoContent) {
             Right(true)
+        } else {
+            Left(response.body())
+        }
+    }
+
+    @ExperimentalEdiAdapterApi
+    override suspend fun postMshConfiguration(postMshConfigurationRequest: PostMshConfigurationRequest): Either<ErrorMessage, Unit> {
+        val url = "$ediAdapterUrl/api/v2/mshConfiguration"
+        val response = httpClient.post(url) {
+            contentType(ContentType.Application.Json)
+            setBody(postMshConfigurationRequest)
+        }.withLogging()
+
+        return if (response.status == NoContent) {
+            Right(Unit)
         } else {
             Left(response.body())
         }
