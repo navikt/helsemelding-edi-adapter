@@ -31,6 +31,7 @@ import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
@@ -39,6 +40,7 @@ import no.nav.helsemelding.ediadapter.model.ErrorMessage
 import no.nav.helsemelding.ediadapter.model.Metadata
 import no.nav.helsemelding.ediadapter.model.PostAppRecRequest
 import no.nav.helsemelding.ediadapter.model.PostMessageRequest
+import no.nav.helsemelding.ediadapter.model.PostMshConfigurationRequest
 import no.nav.helsemelding.ediadapter.server.MessageError
 import no.nav.helsemelding.ediadapter.server.ValidationError
 import no.nav.helsemelding.ediadapter.server.apprecSenderHerId
@@ -53,18 +55,22 @@ import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.GET_APPREC
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.GET_DOCUMENT
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.GET_MESSAGE
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.GET_MESSAGES
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.GET_NOTICES
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.GET_STATUS
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.MARK_READ
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.POST_APPREC
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.POST_MESSAGE
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.POST_MSH_CONFIGURATION
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.getApprecDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.getDocumentDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.getMessageDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.getMessagesDocs
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.getNoticesDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.getStatusDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.markReadDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.postApprecDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.postMessageDocs
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.postMshConfigurationDocs
 import no.nav.helsemelding.ediadapter.server.receiverHerIds
 import no.nav.helsemelding.ediadapter.server.senderHerId
 import no.nav.helsemelding.ediadapter.server.toContent
@@ -81,7 +87,8 @@ private const val MESSAGES_TO_FETCH = "MessagesToFetch"
 private const val ORDER_BY = "OrderBy"
 
 fun Application.configureRoutes(
-    ediClient: HttpClient,
+    ediClientV1: HttpClient,
+    ediClientV2: HttpClient,
     registry: PrometheusMeterRegistry
 ) {
     routing {
@@ -89,7 +96,7 @@ fun Application.configureRoutes(
         internalRoutes(registry)
 
         authenticate(config().azureAuth.issuer.value) {
-            externalRoutes(ediClient)
+            externalRoutes(ediClientV1, ediClientV2)
         }
     }
 }
@@ -118,138 +125,132 @@ fun Route.internalRoutes(registry: PrometheusMeterRegistry) {
     }
 }
 
-fun Route.externalRoutes(ediClient: HttpClient) {
+fun Route.externalRoutes(ediClientV1: HttpClient, ediClientV2: HttpClient) {
     route("/api/v1") {
         get(GET_MESSAGES, getMessagesDocs) {
-            recover(
+            handleRequest(
                 {
                     val params = messageQueryParams(call)
-                    val response = ediClient.get("Messages") { url { parameters.appendAll(params) } }
-                    call.respondText(
-                        text = response.bodyAsText(),
-                        contentType = Json,
-                        status = response.status
-                    )
-                },
-                { e: MessageError -> call.respondError(e.toContent()) }
-            ) { t: Throwable -> call.respondInternalError(t) }
+                    ediClientV1.get("Messages") { url { parameters.appendAll(params) } }
+                }
+            )
         }
 
         get(GET_MESSAGE, getMessageDocs) {
-            recover(
+            handleRequest(
                 {
                     val messageId = messageId(call)
-                    val response = ediClient.get("Messages/$messageId")
-                    call.respondText(
-                        text = response.bodyAsText(),
-                        contentType = Json,
-                        status = response.status
-                    )
-                },
-                { e: MessageError -> call.respondError(e.toContent()) }
-            ) { t: Throwable -> call.respondInternalError(t) }
+                    ediClientV1.get("Messages/$messageId")
+                }
+            )
         }
 
         get(GET_DOCUMENT, getDocumentDocs) {
-            recover(
+            handleRequest(
                 {
                     val messageId = messageId(call)
-                    val response = ediClient.get("Messages/$messageId/business-document")
-                    call.respondText(
-                        text = response.bodyAsText(),
-                        contentType = Json,
-                        status = response.status
-                    )
-                },
-                { e: MessageError -> call.respondError(e.toContent()) }
-            ) { t: Throwable -> call.respondInternalError(t) }
+                    ediClientV1.get("Messages/$messageId/business-document")
+                }
+            )
         }
 
         get(GET_STATUS, getStatusDocs) {
-            recover(
+            handleRequest(
                 {
                     val messageId = messageId(call)
-                    val response = ediClient.get("Messages/$messageId/status")
-                    call.respondText(
-                        text = response.bodyAsText(),
-                        contentType = Json,
-                        status = response.status
-                    )
-                },
-                { e: MessageError -> call.respondError(e.toContent()) }
-            ) { t: Throwable -> call.respondInternalError(t) }
+                    ediClientV1.get("Messages/$messageId/status")
+                }
+            )
         }
 
         get(GET_APPREC, getApprecDocs) {
-            recover(
+            handleRequest(
                 {
                     val messageId = messageId(call)
-                    val response = ediClient.get("Messages/$messageId/apprec")
-                    call.respondText(
-                        text = response.bodyAsText(),
-                        contentType = Json,
-                        status = response.status
-                    )
-                },
-                { e: MessageError -> call.respondError(e.toContent()) }
-            ) { t: Throwable -> call.respondInternalError(t) }
+                    ediClientV1.get("Messages/$messageId/apprec")
+                }
+            )
         }
 
         post(POST_MESSAGE, postMessageDocs) {
             val message = call.receive<PostMessageRequest>()
-            recover(
+            handleRequest(
                 {
-                    val response = ediClient.post("Messages") {
+                    ediClientV1.post("Messages") {
                         contentType(Json)
                         setBody(message)
                     }
-                    call.respondText(
-                        text = response.toMetadata(),
-                        contentType = Json,
-                        status = response.status
-                    )
                 },
-                { e: MessageError -> call.respondError(e.toContent()) }
-            ) { t: Throwable -> call.respondInternalError(t) }
+                { it.toMetadata() }
+            )
         }
 
         post(POST_APPREC, postApprecDocs) {
             val appRec = call.receive<PostAppRecRequest>()
-            recover(
+            handleRequest(
                 {
                     val messageId = messageId(call)
                     val senderHerId = apprecSenderHerId(call)
 
-                    val response = ediClient.post("Messages/$messageId/apprec/$senderHerId") {
+                    ediClientV1.post("Messages/$messageId/apprec/$senderHerId") {
                         contentType(Json)
                         setBody(appRec)
                     }
-                    call.respondText(
-                        text = response.toMetadata(),
-                        contentType = Json,
-                        status = response.status
-                    )
                 },
-                { e: MessageError -> call.respondError(e.toContent()) }
-            ) { t: Throwable -> call.respondInternalError(t) }
+                { it.toMetadata() }
+            )
         }
 
         put(MARK_READ, markReadDocs) {
-            recover(
+            handleRequest(
                 {
                     val messageId = messageId(call)
                     val herId = herId(call)
-                    val response = ediClient.put("Messages/$messageId/read/$herId")
-                    call.respondText(
-                        text = response.bodyAsText(),
-                        contentType = Json,
-                        status = response.status
-                    )
-                },
-                { e: MessageError -> call.respondError(e.toContent()) }
-            ) { t: Throwable -> call.respondInternalError(t) }
+                    ediClientV1.put("Messages/$messageId/read/$herId")
+                }
+            )
         }
     }
+
+    route("/api/v2") {
+        get(GET_NOTICES, getNoticesDocs) {
+            handleRequest(
+                {
+                    val params = noticeQueryParams(call)
+                    ediClientV2.get("Messages/notices") { url { parameters.appendAll(params) } }
+                }
+            )
+        }
+
+        post(POST_MSH_CONFIGURATION, postMshConfigurationDocs) {
+            val message = call.receive<PostMshConfigurationRequest>()
+            handleRequest(
+                {
+                    ediClientV2.post("MshConfiguration") {
+                        contentType(Json)
+                        setBody(message)
+                    }
+                }
+            )
+        }
+    }
+}
+
+private suspend fun RoutingContext.handleRequest(
+    body: suspend Raise<MessageError>.() -> HttpResponse,
+    transform: suspend (httpResponse: HttpResponse) -> String = { it.bodyAsText() }
+) {
+    recover(
+        {
+            val response = body()
+            call.respondText(
+                text = transform(response),
+                contentType = Json,
+                status = response.status
+            )
+        },
+        { e: MessageError -> call.respondError(e.toContent()) }
+    ) { t: Throwable -> call.respondInternalError(t) }
 }
 
 private suspend fun HttpResponse.toMetadata(): String {
@@ -283,6 +284,18 @@ private fun Raise<ValidationError>.messageQueryParams(
         appendIfPresent(INCLUDE_METADATA, includeMetadata)
         appendIfPresent(MESSAGES_TO_FETCH, messagesToFetch)
         appendIfPresent(ORDER_BY, orderBy)
+    }
+}
+
+private fun Raise<ValidationError>.noticeQueryParams(
+    call: ApplicationCall
+): Parameters {
+    val receiverHerIds = receiverHerIds(call)
+    val messagesToFetch = messagesToFetch(call)
+
+    return Parameters.build {
+        appendAll(RECEIVER_HER_IDS, receiverHerIds)
+        appendIfPresent(MESSAGES_TO_FETCH, messagesToFetch)
     }
 }
 

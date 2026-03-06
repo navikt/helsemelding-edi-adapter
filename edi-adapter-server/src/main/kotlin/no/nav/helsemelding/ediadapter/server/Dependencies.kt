@@ -7,6 +7,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.DefaultRequest
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
@@ -21,11 +22,13 @@ import no.nav.helsemelding.ediadapter.server.config.Config
 import no.nav.helsemelding.ediadapter.server.plugin.DpopAuth
 import no.nav.helsemelding.ediadapter.server.util.DpopJwtProvider
 import no.nav.helsemelding.ediadapter.server.util.DpopTokenUtil
+import no.nav.helsemelding.ediadapter.server.config.HttpClient as HttpClientConfig
 
 private val log = KotlinLogging.logger {}
 
 data class Dependencies(
-    val httpClient: HttpClient,
+    val httpClientV1: HttpClient,
+    val httpClientV2: HttpClient,
     val meterRegistry: PrometheusMeterRegistry
 )
 
@@ -51,11 +54,30 @@ private fun httpTokenClient(config: Config, clientEngine: HttpClientEngine): Htt
 private const val API_VERSION = "api-version"
 private const val NHN_SOURCE_SYSTEM = "nhn-source-system"
 
-private fun httpClient(
+private fun httpClientV1(
     config: Config,
     jwtProvider: DpopJwtProvider,
     dpopTokenUtil: DpopTokenUtil,
     clientEngine: HttpClientEngine
+): HttpClient = httpClient(config, jwtProvider, dpopTokenUtil, clientEngine) { httpClientConfig ->
+    header(API_VERSION, httpClientConfig.apiVersionHeaderV1.value)
+}
+
+private fun httpClientV2(
+    config: Config,
+    jwtProvider: DpopJwtProvider,
+    dpopTokenUtil: DpopTokenUtil,
+    clientEngine: HttpClientEngine
+): HttpClient = httpClient(config, jwtProvider, dpopTokenUtil, clientEngine) { httpClientConfig ->
+    header(API_VERSION, httpClientConfig.apiVersionHeaderV2.value)
+}
+
+private fun httpClient(
+    config: Config,
+    jwtProvider: DpopJwtProvider,
+    dpopTokenUtil: DpopTokenUtil,
+    clientEngine: HttpClientEngine,
+    body: DefaultRequest.DefaultRequestBuilder.(httpClientConfig: HttpClientConfig) -> Unit = {}
 ): HttpClient = HttpClient(clientEngine) {
     install(HttpTimeout) {
         connectTimeoutMillis = config.httpClient.connectionTimeout.value
@@ -71,9 +93,9 @@ private fun httpClient(
 
         val httpClient = config.httpClient
 
-        header(API_VERSION, httpClient.apiVersionHeader.value)
         header(NHN_SOURCE_SYSTEM, httpClient.sourceSystemHeader.value)
         header(Accept, httpClient.acceptTypeHeader.value)
+        body(httpClient)
     }
 }
 
@@ -88,10 +110,12 @@ suspend fun ResourceScope.dependencies(): Dependencies = awaitAll {
     val dpopJwtProvider = DpopJwtProvider(config)
     val dpopTokenUtil = DpopTokenUtil(config, dpopJwtProvider, httpTokenClient)
 
-    val httpClient = async { httpClient(config, dpopJwtProvider, dpopTokenUtil, httpClientEngine) }
+    val httpClientV1 = async { httpClientV1(config, dpopJwtProvider, dpopTokenUtil, httpClientEngine) }
+    val httpClientV2 = async { httpClientV2(config, dpopJwtProvider, dpopTokenUtil, httpClientEngine) }
 
     Dependencies(
-        httpClient.await(),
+        httpClientV1.await(),
+        httpClientV2.await(),
         metricsRegistry.await()
     )
 }
