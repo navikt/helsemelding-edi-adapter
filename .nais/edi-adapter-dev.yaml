@@ -78,6 +78,8 @@ spec:
           cluster: dev-gcp
         - application: outbound-message-service
           cluster: dev-gcp
+        - application: message-generator
+          cluster: dev-gcp
   env:
     - name: NHN_BASE_URL
       value: "https://api.tjener.test.melding.nhn.no"
