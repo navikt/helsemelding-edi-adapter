@@ -72,7 +72,6 @@ import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.postApprecDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.postMessageDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApi.postMshConfigurationDocs
 import no.nav.helsemelding.ediadapter.server.receiverHerIds
-import no.nav.helsemelding.ediadapter.server.senderHerId
 import no.nav.helsemelding.ediadapter.server.toContent
 import kotlin.uuid.Uuid
 import kotlinx.serialization.json.Json as JsonUtil
@@ -80,7 +79,6 @@ import kotlinx.serialization.json.Json as JsonUtil
 private val log = KotlinLogging.logger { }
 
 private const val RECEIVER_HER_IDS = "ReceiverHerIds"
-private const val SENDER_HER_ID = "SenderHerId"
 private const val BUSINESS_DOCUMENT_ID = "BusinessDocumentId"
 private const val INCLUDE_METADATA = "IncludeMetadata"
 private const val MESSAGES_TO_FETCH = "MessagesToFetch"
@@ -271,7 +269,6 @@ private fun Raise<ValidationError>.messageQueryParams(
     call: ApplicationCall
 ): Parameters {
     val receiverHerIds = receiverHerIds(call)
-    val senderHerId = senderHerId(call)
     val businessDocumentId = businessDocumentId(call)
     val includeMetadata = includeMetadata(call)
     val messagesToFetch = messagesToFetch(call)
@@ -279,7 +276,6 @@ private fun Raise<ValidationError>.messageQueryParams(
 
     return Parameters.build {
         appendAll(RECEIVER_HER_IDS, receiverHerIds)
-        appendIfPresent(SENDER_HER_ID, senderHerId)
         appendIfPresent(BUSINESS_DOCUMENT_ID, businessDocumentId)
         appendIfPresent(INCLUDE_METADATA, includeMetadata)
         appendIfPresent(MESSAGES_TO_FETCH, messagesToFetch)

@@ -30,9 +30,6 @@ fun Raise<ValidationError>.receiverHerIds(call: ApplicationCall): List<String> =
         .filter { it.isNotEmpty() }
         .also { ensure(it.isNotEmpty()) { ReceiverHerIdsEmpty } }
 
-fun Raise<ValidationError>.senderHerId(call: ApplicationCall): String? =
-    optionalNonBlankQueryParam(call, SENDER_HER_ID, SenderHerIdEmpty)
-
 fun Raise<ValidationError>.businessDocumentId(call: ApplicationCall): String? =
     optionalNonBlankQueryParam(call, BUSINESS_DOCUMENT_ID, BusinessDocumentIdEmpty)
 

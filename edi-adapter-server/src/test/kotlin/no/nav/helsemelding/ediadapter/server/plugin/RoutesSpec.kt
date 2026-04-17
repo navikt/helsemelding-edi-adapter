@@ -107,22 +107,6 @@ class RoutesSpec : StringSpec(
             }
         }
 
-        "GET /messages with receiver her id and sender her id returns EDI response" {
-            val ediClientV1 = fakeEdiClient {
-                it.url.fullPath shouldBe "/Messages?ReceiverHerIds=1&SenderHerId=2"
-                respond("""[{"id":"100", "receiverHerId": "1"}]""")
-            }
-
-            testApplication {
-                installExternalRoutes(ediClientV1)
-
-                val response = client.get("/api/v1/messages?receiverHerIds=1&senderHerId=2")
-
-                response.status shouldBe OK
-                response.bodyAsText() shouldBe """[{"id":"100", "receiverHerId": "1"}]"""
-            }
-        }
-
         "GET /messages with receiver her id and business document id returns EDI response" {
             val ediClientV1 = fakeEdiClient {
                 it.url.fullPath shouldBe "/Messages?ReceiverHerIds=1&BusinessDocumentId=10"
