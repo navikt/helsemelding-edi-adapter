@@ -53,16 +53,6 @@ object MessagesApi {
                 }
             }
 
-            queryParameter<Int>("senderHerId") {
-                description = "Sender HER ID"
-
-                example("Sender HER ID") {
-                    summary = "Sender filter"
-                    description = "Filter messages by sender HER ID"
-                    value = 8142519
-                }
-            }
-
             queryParameter<String>("businessDocumentId") {
                 description = "Business document UUID"
 

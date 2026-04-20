@@ -5,7 +5,6 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class GetMessagesRequest(
     val receiverHerIds: List<Int>,
-    val senderHerId: Int? = null,
     val businessDocumentId: String? = null,
     val includeMetadata: Boolean = false,
     val messagesToFetch: Int = 10,
@@ -16,10 +15,6 @@ data class GetMessagesRequest(
 
         receiverHerIds.forEach {
             params += "receiverHerIds=$it"
-        }
-
-        senderHerId?.let {
-            params += "senderHerId=$it"
         }
 
         businessDocumentId?.let {
