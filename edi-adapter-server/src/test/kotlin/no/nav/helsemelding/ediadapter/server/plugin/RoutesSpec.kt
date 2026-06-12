@@ -481,7 +481,7 @@ class RoutesSpec : StringSpec(
                     "service": "test-service",
                     "serviceType": "test-service-type",
                     "action": "test-action",
-                    "role": "test-sender-role",
+                    "senderRole": "test-sender-role",
                     "useSenderLevel1HerId": true,
                     "receiverRole": "test-receiver-role",
                     "applicationName": "test-application-name",
