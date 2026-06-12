@@ -9,7 +9,7 @@ data class EbXmlInfo(
     val service: String? = null,
     val serviceType: String? = null,
     val action: String? = null,
-    val role: String? = null,
+    val senderRole: String? = null,
     val useSenderLevel1HerId: Boolean? = null,
     val receiverRole: String? = null,
     val applicationName: String? = null,
