@@ -8,11 +8,26 @@ import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 
+/**
+ * Application receipt status reported by the receiver.
+ *
+ * Serialized as a numeric code (`"1"`–`"4"`) in JSON.
+ *
+ * @property value the string name used by the NHN EDI API
+ * @property description human-readable Norwegian description
+ */
 @Serializable(with = AppRecStatusSerializer::class)
 enum class AppRecStatus(val value: String, val description: String) {
+    /** Message was accepted without errors. */
     OK("Ok", "Ok"),
+
+    /** Message was rejected by the receiver. */
     REJECTED("Rejected", "Avvist"),
+
+    /** Message was accepted but contained errors in one or more message parts. */
     OK_ERROR_IN_MESSAGE_PART("OkErrorInMessagePart", "Ok, feil i delmelding"),
+
+    /** The received value is not a recognised AppRec status. */
     UNKNOWN("Unknown", "The value is not supported");
 
     companion object {

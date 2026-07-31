@@ -8,6 +8,13 @@ import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 
+/**
+ * Sort order for message queries.
+ *
+ * Serialized as a numeric code (`"1"` for ascending, `"2"` for descending) in JSON.
+ *
+ * @property value the string name used by the NHN EDI API
+ */
 @Serializable(with = OrderBySerializer::class)
 enum class OrderBy(val value: String) {
     ASC("Ascending"),
