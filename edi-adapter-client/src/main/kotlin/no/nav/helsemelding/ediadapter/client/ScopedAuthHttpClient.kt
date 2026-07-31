@@ -15,6 +15,12 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 import no.nav.helsemelding.ediadapter.client.Config.AzureAuth
 
+/**
+ * Creates a factory function for an [HttpClient] configured with Azure AD scoped bearer token authentication.
+ *
+ * @param scope the OAuth2 scope to request, e.g. `"api://<client-id>/.default"`
+ * @return a factory function that creates a configured [HttpClient] with automatic token refresh
+ */
 fun scopedAuthHttpClient(scope: String): () -> HttpClient = { httpClient(httpTokenClient(), scope) }
 
 private fun httpTokenClient(): HttpClient =

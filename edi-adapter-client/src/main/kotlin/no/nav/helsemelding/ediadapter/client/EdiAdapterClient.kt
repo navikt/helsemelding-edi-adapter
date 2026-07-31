@@ -33,42 +33,143 @@ import kotlin.uuid.Uuid
 
 private val log = KotlinLogging.logger {}
 
+/**
+ * Client for communicating with the EDI Adapter service.
+ *
+ * Provides access to EDI messages, AppRec handling, and MSH configuration
+ * through the NHN EDI API.
+ *
+ * All operations return [Either] where [Either.Left] contains an [ErrorMessage]
+ * on failure, and [Either.Right] contains the successful result.
+ *
+ */
 interface EdiAdapterClient {
+    /**
+     * Retrieves AppRec (application receipt) information for a message.
+     *
+     * @param id the unique identifier of the message to look up AppRec info for
+     * @return a list of [ApprecInfo] entries, one per receiver HER-ID, or an [ErrorMessage] on failure
+     */
     suspend fun getApprecInfo(id: Uuid): Either<ErrorMessage, List<ApprecInfo>>
 
+    /**
+     * Retrieves messages matching the given filter criteria.
+     *
+     * @param getMessagesRequest filter and pagination parameters for the query
+     * @return a list of matching [Message] objects, or an [ErrorMessage] on failure
+     */
     suspend fun getMessages(getMessagesRequest: GetMessagesRequest): Either<ErrorMessage, List<Message>>
 
+    /**
+     * Retrieves notices for the given receiver HER-IDs.
+     *
+     * This function is part of the experimental NHN EDI v2/vNext API and may
+     * change or be removed without prior notice.
+     *
+     * @param getNoticesRequest filter parameters including receiver HER-IDs and message count
+     * @return a list of [Notice] objects, or an [ErrorMessage] on failure
+     */
     @ExperimentalEdiAdapterApi
     suspend fun getNotices(getNoticesRequest: GetNoticesRequest): Either<ErrorMessage, List<Notice>>
 
+    /**
+     * Sends a new message to the adapter.
+     *
+     * @param postMessagesRequest the message payload, content type, encoding, and optional overrides
+     * @return [Metadata] with the assigned message ID and storage location, or an [ErrorMessage] on failure
+     */
     suspend fun postMessage(postMessagesRequest: PostMessageRequest): Either<ErrorMessage, Metadata>
 
+    /**
+     * Retrieves a single message by its unique identifier.
+     *
+     * @param id the unique identifier of the message
+     * @return the [Message], or an [ErrorMessage] if not found or on failure
+     */
     suspend fun getMessage(id: Uuid): Either<ErrorMessage, Message>
 
+    /**
+     * Retrieves the raw XML payload for a message.
+     *
+     * @param id the unique identifier of the message
+     * @return a [GetBusinessDocumentResponse] containing the document, content type, and encoding,
+     *   or an [ErrorMessage] on failure
+     */
     suspend fun getBusinessDocument(id: Uuid): Either<ErrorMessage, GetBusinessDocumentResponse>
 
+    /**
+     * Retrieves the delivery and AppRec status for a message, per receiver HER-ID.
+     *
+     * @param id the unique identifier of the message
+     * @return a list of [StatusInfo] entries, one per receiver, or an [ErrorMessage] on failure
+     */
     suspend fun getMessageStatus(id: Uuid): Either<ErrorMessage, List<StatusInfo>>
 
+    /**
+     * Sends an AppRec (application receipt) for a received message.
+     *
+     * @param id the unique identifier of the message to acknowledge
+     * @param apprecSenderHerId the HER-ID of the party sending the AppRec
+     * @param postAppRecRequest the AppRec status, optional error list, and optional ebXML overrides
+     * @return [Metadata] with the assigned AppRec message ID and location, or an [ErrorMessage] on failure
+     */
     suspend fun postApprec(
         id: Uuid,
         apprecSenderHerId: Int,
         postAppRecRequest: PostAppRecRequest
     ): Either<ErrorMessage, Metadata>
 
+    /**
+     * Marks a message as read for the given HER-ID.
+     *
+     * @param id the unique identifier of the message to mark as read
+     * @param herId the HER-ID of the receiver marking the message as read
+     * @return `true` on success (HTTP 204), or an [ErrorMessage] on failure
+     */
     suspend fun markMessageAsRead(id: Uuid, herId: Int): Either<ErrorMessage, Boolean>
 
+    /**
+     * Sends MSH (Message Service Handler) configuration.
+     *
+     * This function is part of the experimental NHN EDI v2/vNext API and may
+     * change or be removed without prior notice.
+     *
+     * @param postMshConfigurationRequest the MSH configuration to apply
+     * @return [Unit] on success (HTTP 204), or an [ErrorMessage] on failure
+     */
     @ExperimentalEdiAdapterApi
     suspend fun postMshConfiguration(postMshConfigurationRequest: PostMshConfigurationRequest): Either<ErrorMessage, Unit>
 
+    /**
+     * Closes the underlying HTTP client and releases resources.
+     *
+     * Should be called when the client is no longer needed to free connections.
+     */
     fun close()
 }
 
+/**
+ * HTTP-based implementation of [EdiAdapterClient].
+ *
+ * Communicates with the EDI Adapter service over HTTP using the provided [HttpClient].
+ * Use [scopedAuthHttpClient] to create a pre-configured client with Azure AD bearer token support.
+ *
+ * @param clientProvider factory function that creates the underlying [HttpClient]
+ * @param ediAdapterUrl base URL of the EDI Adapter service; defaults to the value from
+ *   the `edi-adapter-client.conf` configuration file
+ */
 class HttpEdiAdapterClient(
     clientProvider: () -> HttpClient,
     private val ediAdapterUrl: String = config().ediAdapterServer.url.toString()
 ) : EdiAdapterClient {
     private var httpClient = clientProvider.invoke()
 
+    /**
+     * Retrieves AppRec (application receipt) information for a message.
+     *
+     * @param id the unique identifier of the message to look up AppRec info for
+     * @return a list of [ApprecInfo] entries, one per receiver HER-ID, or an [ErrorMessage] on failure
+     */
     override suspend fun getApprecInfo(id: Uuid): Either<ErrorMessage, List<ApprecInfo>> {
         val url = "$ediAdapterUrl/api/v1/messages/$id/apprec"
         val response = httpClient.get(url) {
@@ -78,6 +179,12 @@ class HttpEdiAdapterClient(
         return handleResponse(response)
     }
 
+    /**
+     * Retrieves messages matching the given filter criteria.
+     *
+     * @param getMessagesRequest filter and pagination parameters for the query
+     * @return a list of matching [Message] objects, or an [ErrorMessage] on failure
+     */
     override suspend fun getMessages(getMessagesRequest: GetMessagesRequest): Either<ErrorMessage, List<Message>> {
         val url = "$ediAdapterUrl/api/v1/messages?${getMessagesRequest.toUrlParams()}"
         val response = httpClient.get(url) {
@@ -87,6 +194,15 @@ class HttpEdiAdapterClient(
         return handleResponse(response)
     }
 
+    /**
+     * Retrieves notices for the given receiver HER-IDs.
+     *
+     * This function is part of the experimental NHN EDI v2/vNext API and may
+     * change or be removed without prior notice.
+     *
+     * @param getNoticesRequest filter parameters including receiver HER-IDs and message count
+     * @return a list of [Notice] objects, or an [ErrorMessage] on failure
+     */
     @ExperimentalEdiAdapterApi
     override suspend fun getNotices(getNoticesRequest: GetNoticesRequest): Either<ErrorMessage, List<Notice>> {
         val url = "$ediAdapterUrl/api/v2/messages/notices?${getNoticesRequest.toUrlParams()}"
@@ -97,6 +213,12 @@ class HttpEdiAdapterClient(
         return handleResponse(response)
     }
 
+    /**
+     * Sends a new message to the adapter.
+     *
+     * @param postMessagesRequest the message payload, content type, encoding, and optional overrides
+     * @return [Metadata] with the assigned message ID and storage location, or an [ErrorMessage] on failure
+     */
     override suspend fun postMessage(postMessagesRequest: PostMessageRequest): Either<ErrorMessage, Metadata> {
         val url = "$ediAdapterUrl/api/v1/messages"
         val response = httpClient.post(url) {
@@ -107,6 +229,12 @@ class HttpEdiAdapterClient(
         return handleResponse(response)
     }
 
+    /**
+     * Retrieves a single message by its unique identifier.
+     *
+     * @param id the unique identifier of the message
+     * @return the [Message], or an [ErrorMessage] if not found or on failure
+     */
     override suspend fun getMessage(id: Uuid): Either<ErrorMessage, Message> {
         val url = "$ediAdapterUrl/api/v1/messages/$id"
         val response = httpClient.get(url) {
@@ -116,6 +244,13 @@ class HttpEdiAdapterClient(
         return handleResponse(response)
     }
 
+    /**
+     * Retrieves the raw XML payload for a message.
+     *
+     * @param id the unique identifier of the message
+     * @return a [GetBusinessDocumentResponse] containing the document, content type, and encoding,
+     *   or an [ErrorMessage] on failure
+     */
     override suspend fun getBusinessDocument(id: Uuid): Either<ErrorMessage, GetBusinessDocumentResponse> {
         val url = "$ediAdapterUrl/api/v1/messages/$id/document"
         val response = httpClient.get(url) {
@@ -125,6 +260,12 @@ class HttpEdiAdapterClient(
         return handleResponse(response)
     }
 
+    /**
+     * Retrieves the delivery and AppRec status for a message, per receiver HER-ID.
+     *
+     * @param id the unique identifier of the message
+     * @return a list of [StatusInfo] entries, one per receiver, or an [ErrorMessage] on failure
+     */
     override suspend fun getMessageStatus(id: Uuid): Either<ErrorMessage, List<StatusInfo>> {
         val url = "$ediAdapterUrl/api/v1/messages/$id/status"
         val response = httpClient.get(url) {
@@ -134,6 +275,14 @@ class HttpEdiAdapterClient(
         return handleResponse(response)
     }
 
+    /**
+     * Sends an AppRec (application receipt) for a received message.
+     *
+     * @param id the unique identifier of the message to acknowledge
+     * @param apprecSenderHerId the HER-ID of the party sending the AppRec
+     * @param postAppRecRequest the AppRec status, optional error list, and optional ebXML overrides
+     * @return [Metadata] with the assigned AppRec message ID and location, or an [ErrorMessage] on failure
+     */
     override suspend fun postApprec(
         id: Uuid,
         apprecSenderHerId: Int,
@@ -148,6 +297,13 @@ class HttpEdiAdapterClient(
         return handleResponse(response)
     }
 
+    /**
+     * Marks a message as read for the given HER-ID.
+     *
+     * @param id the unique identifier of the message to mark as read
+     * @param herId the HER-ID of the receiver marking the message as read
+     * @return `true` on success (HTTP 204), or an [ErrorMessage] on failure
+     */
     override suspend fun markMessageAsRead(id: Uuid, herId: Int): Either<ErrorMessage, Boolean> {
         val url = "$ediAdapterUrl/api/v1/messages/$id/read/$herId"
         val response = httpClient.put(url) {
@@ -161,6 +317,15 @@ class HttpEdiAdapterClient(
         }
     }
 
+    /**
+     * Sends MSH (Message Service Handler) configuration.
+     *
+     * This function is part of the experimental NHN EDI v2/vNext API and may
+     * change or be removed without prior notice.
+     *
+     * @param postMshConfigurationRequest the MSH configuration to apply
+     * @return [Unit] on success (HTTP 204), or an [ErrorMessage] on failure
+     */
     @ExperimentalEdiAdapterApi
     override suspend fun postMshConfiguration(postMshConfigurationRequest: PostMshConfigurationRequest): Either<ErrorMessage, Unit> {
         val url = "$ediAdapterUrl/api/v2/mshConfiguration"
@@ -176,6 +341,11 @@ class HttpEdiAdapterClient(
         }
     }
 
+    /**
+     * Closes the underlying HTTP client and releases resources.
+     *
+     * Should be called when the client is no longer needed to free connections.
+     */
     override fun close() = httpClient.close()
 
     private suspend inline fun <reified T> handleResponse(httpResponse: HttpResponse): Either<ErrorMessage, T> {
