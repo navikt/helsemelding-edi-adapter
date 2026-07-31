@@ -62,7 +62,7 @@ publishing {
         create<MavenPublication>("mavenJava") {
             groupId = "no.nav.helsemelding"
             artifactId = "edi-adapter-client"
-            version = "0.0.8-SNAPSHOT"
+            version = "0.0.8"
             from(components["java"])
         }
     }
