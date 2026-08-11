@@ -44,6 +44,10 @@ tasks {
     }
 }
 
+java {
+    withSourcesJar()
+}
+
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().all {
     compilerOptions {
         jvmTarget = JvmTarget.JVM_21
@@ -58,7 +62,7 @@ publishing {
         create<MavenPublication>("mavenJava") {
             groupId = "no.nav.helsemelding"
             artifactId = "edi-adapter-client"
-            version = "0.0.7"
+            version = "0.0.8"
             from(components["java"])
         }
     }
