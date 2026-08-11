@@ -24,6 +24,9 @@ categories:
     labels:
       - 'bump'
       - 'dependencies'
+  - title: ' 📝 Documentation'
+    labels:
+      - 'documentation'
   - title: "📝 Other"
     labels:
       - "*"
