@@ -4,6 +4,7 @@ import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.datatest.withData
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.equality.shouldBeEqualUsingFields
@@ -23,6 +24,7 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.fullPath
 import io.ktor.http.headersOf
+import io.ktor.serialization.JsonConvertException
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
@@ -49,6 +51,7 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.text.Charsets.UTF_8
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 import kotlinx.serialization.json.Json as JsonUtil
 
@@ -279,6 +282,91 @@ class EdiAdapterClientSpec : StringSpec(
 
             val message = ediClient.getMessage(uuid).shouldBeRight()
             message shouldBeEqualUsingFields messageStub
+        }
+
+        withData(
+            nameFn = { "Deserializing businessDocumentGenDate ${it.first} should convert ${it.second.first()} to ${it.second.last()}" },
+            "without timezone" to listOf("2026-08-27T05:41:33.579185300", "2026-08-27T03:41:33.579185300Z"),
+            "as UTC time" to listOf("2026-08-27T05:41:33.579185300Z", "2026-08-27T05:41:33.579185300Z"),
+            "as UTC time with offset" to listOf(
+                "2026-08-27T05:41:33.579185300+02:00",
+                "2026-08-27T03:41:33.579185300Z"
+            )
+        ) {
+            val (dateTime, expectedDateTimeStr) = it.second
+            val uuid = Uuid.random()
+            val expectedDateTime = Instant.parse(expectedDateTimeStr)
+            val messageJson = JsonUtil.parseToJsonElement(
+                """
+                {
+                    "id": "$uuid",
+                    "contentType": "application/xml",
+                    "receiverHerId": 42,
+                    "senderHerId": 1111,
+                    "businessDocumentId": "49133a4c-5a12-44a2-aed5-03fb6b0e4346",
+                    "businessDocumentGenDate": "$dateTime",
+                    "isAppRec": false,
+                    "sourceSystem": "Source system"
+                }
+                """.trimIndent()
+            ).toString()
+
+            val ediClient = ediAdapterClient {
+                fakeScopedAuthHttpClient { request ->
+                    request.method shouldBe HttpMethod.Get
+                    request.url.fullPath shouldBe "/api/v1/messages/$uuid"
+
+                    respond(
+                        content = messageJson,
+                        headers = headersOf(ContentType, Json.toString()),
+                        status = HttpStatusCode.OK
+                    )
+                }
+            }
+
+            val message = ediClient.getMessage(uuid).shouldBeRight()
+            message.businessDocumentGenDate shouldBe expectedDateTime
+        }
+
+        withData(
+            nameFn = { "Deserializing invalid dateTime($it) for businessDocumentGenDate should return JsonConvertException" },
+            "2026-08-27T05:41:33.579185300-+02:00",
+            "2026-08-T05:41:33.579185300+02:00",
+            "2026-08-27T05:41:.579185300Z",
+            "2026-08-27T05:41:33.+02:00"
+        ) { dateTime ->
+            val uuid = Uuid.random()
+            val messageJson = JsonUtil.parseToJsonElement(
+                """
+                {
+                    "id": "$uuid",
+                    "contentType": "application/xml",
+                    "receiverHerId": 42,
+                    "senderHerId": 1111,
+                    "businessDocumentId": "49133a4c-5a12-44a2-aed5-03fb6b0e4346",
+                    "businessDocumentGenDate": "$dateTime",
+                    "isAppRec": false,
+                    "sourceSystem": "Source system"
+                }
+                """.trimIndent()
+            ).toString()
+
+            val ediClient = ediAdapterClient {
+                fakeScopedAuthHttpClient { request ->
+                    request.method shouldBe HttpMethod.Get
+                    request.url.fullPath shouldBe "/api/v1/messages/$uuid"
+
+                    respond(
+                        content = messageJson,
+                        headers = headersOf(ContentType, Json.toString()),
+                        status = HttpStatusCode.OK
+                    )
+                }
+            }
+
+            shouldThrow<JsonConvertException> {
+                ediClient.getMessage(uuid).shouldBeRight()
+            }
         }
 
         "getMessage returns messageError and no message if response is 404" {
