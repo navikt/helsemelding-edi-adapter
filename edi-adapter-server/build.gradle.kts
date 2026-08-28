@@ -80,6 +80,13 @@ dependencies {
     testImplementation(kotlin("test"))
 }
 
+configurations.all {
+    resolutionStrategy {
+        // Enforce the version from token-validation-ktor to avoid newer versions from any dependency like :edi-adapter-model
+        force("org.jetbrains.kotlinx:kotlinx-datetime-jvm:0.6.2")
+    }
+}
+
 application {
     mainClass.set("no.nav.helsemelding.ediadapter.server.AppKt")
 }

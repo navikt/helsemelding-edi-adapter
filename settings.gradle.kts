@@ -27,6 +27,7 @@ dependencyResolutionManagement {
             version("logback", "1.5.19")
             version("logstash", "7.4")
             version("kotlinx-serialization", "1.9.0")
+            version("kotlinx-datetime", "0.8.0")
 
             library("arrow-core", "io.arrow-kt", "arrow-core").versionRef("arrow")
             library("arrow-functions", "io.arrow-kt", "arrow-functions").versionRef("arrow")
@@ -75,6 +76,7 @@ dependencyResolutionManagement {
             ).versionRef("token-validation-ktor")
 
             library("kotlinx-serialization-json", "org.jetbrains.kotlinx", "kotlinx-serialization-json").versionRef("kotlinx-serialization")
+            library("kotlinx-serialization-datetime", "org.jetbrains.kotlinx", "kotlinx-datetime-jvm").versionRef("kotlinx-datetime")
 
             bundle("prometheus", listOf("ktor-server-metrics-micrometer", "micrometer-registry-prometheus"))
             bundle("logging", listOf("logback-classic", "logback-logstash"))

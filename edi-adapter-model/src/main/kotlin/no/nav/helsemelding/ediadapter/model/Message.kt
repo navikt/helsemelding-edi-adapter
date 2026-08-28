@@ -23,6 +23,7 @@ data class Message constructor(
     val receiverHerId: Int? = null,
     val senderHerId: Int? = null,
     val businessDocumentId: String? = null,
+    @Serializable(with = FlexibleInstantSerializer::class)
     val businessDocumentGenDate: Instant? = null,
     val isAppRec: Boolean? = null,
     val sourceSystem: String? = null
