@@ -1,6 +1,7 @@
 package no.nav.helsemelding.ediadapter.model
 
 import kotlinx.serialization.Serializable
+import no.nav.helsemelding.ediadapter.serializer.FlexibleInstantSerializer
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
