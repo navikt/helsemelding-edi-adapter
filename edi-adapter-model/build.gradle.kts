@@ -8,6 +8,7 @@ plugins {
 }
 
 dependencies {
+    implementation(libs.arrow.core)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.serialization.datetime)
 }
@@ -48,7 +49,7 @@ publishing {
         create<MavenPublication>("mavenJava") {
             groupId = "no.nav.helsemelding"
             artifactId = "edi-adapter-model"
-            version = "0.0.8"
+            version = "0.0.9"
             from(components["java"])
         }
     }
