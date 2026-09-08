@@ -16,6 +16,8 @@ Internal services should depend on this module rather than calling the EDI Adapt
 
 The client communicates with the adapter's internal API under `/api/v1/*` for stable endpoints and `/api/v2/*` for experimental v2-vNext endpoints.
 
+Import request and response models from `no.nav.helsemelding.ediadapter.model.v1` or `.v2`, matching the endpoint version. Shared `ErrorMessage` and `GetBusinessDocumentResponse` types are in `.model.common`. See the [model package overview](../edi-adapter-model/README.md#model-packages) for migration details.
+
 ### Experimental (v2-vNext)
 
 Some client methods are annotated with `@ExperimentalEdiAdapterApi`. These wrap v2-vNext NHN endpoints that are still subject to change.

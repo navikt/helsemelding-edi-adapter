@@ -29,7 +29,12 @@ fun main() = SuspendApp {
                 Netty,
                 port = config().server.port.value,
                 preWait = config().server.preWait,
-                module = ediAdapterModule(deps.httpClientV1, deps.httpClientV2, deps.meterRegistry)
+                module = ediAdapterModule(
+                    deps.httpClientV1,
+                    deps.httpClientV2,
+                    deps.httpClientV3,
+                    deps.meterRegistry
+                )
             )
 
             awaitCancellation()
@@ -41,16 +46,17 @@ fun main() = SuspendApp {
 internal fun ediAdapterModule(
     ediClientV1: HttpClient,
     ediClientV2: HttpClient,
+    ediClientV3: HttpClient,
     meterRegistry: PrometheusMeterRegistry
 ): Application.() -> Unit {
     return {
         configureMetrics(meterRegistry)
         configureContentNegotiation()
         configureAuthentication()
-        configureRoutes(ediClientV1, ediClientV2, meterRegistry)
+        configureRoutes(ediClientV1, ediClientV2, ediClientV3, meterRegistry)
         configureCallLogging()
         configureOpenApi()
     }
 }
 
-private fun logError(t: Throwable) = log.error { "Shutdown edi-adapter due to: ${t.stackTraceToString()}" }
+private fun logError(t: Throwable) = log.error(t) { "Shutdown edi adapter" }

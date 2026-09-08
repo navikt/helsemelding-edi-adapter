@@ -17,3 +17,14 @@ This module contains request and response objects used by both the client and th
 * Used by:
     * `edi-adapter-client`
     * `edi-adapter-server`
+
+## Model packages
+
+Models are organized by API version under `no.nav.helsemelding.ediadapter.model`:
+
+| Package | Models |
+|---------|--------|
+| `v1` | Messages, AppRec, delivery status, message queries and ebXML overrides |
+| `v2` | Notices, notice queries and MSH configuration |
+| `v3` | NHN V3 requests, responses, notifications, configuration and problem details |
+| `common` | `ErrorMessage` for V1/V2 and `GetBusinessDocumentResponse` for V1/V3 |

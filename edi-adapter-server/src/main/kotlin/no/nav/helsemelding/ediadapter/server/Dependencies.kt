@@ -29,6 +29,7 @@ private val log = KotlinLogging.logger {}
 data class Dependencies(
     val httpClientV1: HttpClient,
     val httpClientV2: HttpClient,
+    val httpClientV3: HttpClient,
     val meterRegistry: PrometheusMeterRegistry
 )
 
@@ -72,6 +73,15 @@ private fun httpClientV2(
     header(API_VERSION, httpClientConfig.apiVersionHeaderV2.value)
 }
 
+internal fun httpClientV3(
+    config: Config,
+    jwtProvider: DpopJwtProvider,
+    dpopTokenUtil: DpopTokenUtil,
+    clientEngine: HttpClientEngine
+): HttpClient = httpClient(config, jwtProvider, dpopTokenUtil, clientEngine) { httpClientConfig ->
+    header(API_VERSION, httpClientConfig.apiVersionHeaderV3.value)
+}
+
 private fun httpClient(
     config: Config,
     jwtProvider: DpopJwtProvider,
@@ -112,10 +122,12 @@ suspend fun ResourceScope.dependencies(): Dependencies = awaitAll {
 
     val httpClientV1 = async { httpClientV1(config, dpopJwtProvider, dpopTokenUtil, httpClientEngine) }
     val httpClientV2 = async { httpClientV2(config, dpopJwtProvider, dpopTokenUtil, httpClientEngine) }
+    val httpClientV3 = async { httpClientV3(config, dpopJwtProvider, dpopTokenUtil, httpClientEngine) }
 
     Dependencies(
         httpClientV1.await(),
         httpClientV2.await(),
+        httpClientV3.await(),
         metricsRegistry.await()
     )
 }
