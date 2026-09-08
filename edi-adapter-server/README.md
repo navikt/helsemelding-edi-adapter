@@ -46,8 +46,6 @@ Routes are versioned under `/api/v1`, `/api/v2`, and `/api/v3`. Their upstream `
 
 ### v3
 
-The V3 routes use a separate NHN client with `api-version: 3`. Request and response models are in `no.nav.helsemelding.ediadapter.model.v3`.
-
 | Method | Path | Calls external NHN endpoint |
 |--------|------|----------------------------|
 | GET | `/api/v3/notifications` | `GET /notifications` |
@@ -62,23 +60,11 @@ The V3 routes use a separate NHN client with `api-version: 3`. Request and respo
 | DELETE | `/api/v3/mshconfigurations` | `DELETE /mshconfigurations` |
 | GET | `/api/v3/ping` | `GET /ping` |
 
-Notification polling takes repeated `herIds`, a required non-negative 64-bit `offset`, and optional `notificationsToFetch` (1–1000, NHN default 100):
+V3 supports notification polling and SSE streaming. Consumers must reconnect when a stream closes and resume from the last successfully processed offset.
 
-```text
-GET /api/v3/notifications?herIds=42&herIds=1337&offset=0&notificationsToFetch=100
-```
+NHN errors are forwarded unchanged; local errors use `MshApiProblemDetails`. The Kotlin client currently supports V1/V2 only.
 
-Polling and SSE accept at most 1500 unique HER IDs. SSE takes `herIds` and an optional `offset`; omitting the offset starts at the end of the stream, as specified in OpenAPI. The response is `text/event-stream`, forwarded incrementally. Consumers must reconnect after disconnection and persist their last successfully processed offset. Offsets are global and may have gaps.
-
-Sending messages and AppRecs returns `202 Accepted` with an object containing `id`. Any `Location` header is preserved. AppRec sender HER ID is supplied in the request body. Marking a message as downloaded takes `{ "receiverHerId": 42 }` and returns `204`.
-
-MSH configuration uses `PUT` with `{ "configurations": [...] }`, and `receiveNotificationChannel: "Api"`. Deletion takes repeated `herIds` query parameters. The adapter preserves NHN's response status; the published DELETE specification does not declare a success code.
-
-NHN errors are forwarded as received; local V3 validation and processing errors use `MshApiProblemDetails`. V1/V2 error handling and contracts remain unchanged. The existing Kotlin client still targets V1/V2.
-
-Before processing V3 messages, configure every HER ID. Consumers should handle duplicates and coordinate the switch from V2 processing, following the [NHN migration guide](https://utviklerportal.nhn.no/informasjonstjenester/meldingsutveksling/edi-20/edi-20-ekstern-docs/docs/api-version-3/migration_to_v3_engbmd).
-
-Reference: [NHN V3 OpenAPI](https://utviklerportal.nhn.no/informasjonstjenester/meldingsutveksling/edi-20/edi-20-ekstern-docs/openapi/meldingstjener-api-test-v3-internett). AppRec status is serialized using the schema's string enum values (`Ok`, `Rejected`, `OkErrorInMessagePart`); some upstream examples still show numeric codes.
+See the [NHN V3 OpenAPI](https://utviklerportal.nhn.no/informasjonstjenester/meldingsutveksling/edi-20/edi-20-ekstern-docs/openapi/meldingstjener-api-test-v3-internett) for request and response details, and the [migration guide](https://utviklerportal.nhn.no/informasjonstjenester/meldingsutveksling/edi-20/edi-20-ekstern-docs/docs/api-version-3/migration_to_v3_engbmd) for configuration and migration requirements.
 
 ## API documentation (Swagger)
 
@@ -91,16 +77,6 @@ When running the server locally, the documentation is available at:
 The Swagger UI reflects the `/api/v1/*`, `/api/v2/*`, and `/api/v3/*` endpoints exposed by this service and can be used to explore and test the API locally.
 
 Swagger is only intended for local development and internal use.
-
-## Implementation overview
-
-Adapter API routes are registered in `externalRoutes` in `Routes.kt`, which delegates to `RoutesV1.kt`, `RoutesV2.kt` and `RoutesV3.kt`. Swagger definitions are organized by API version in `MessagesApiV1.kt`, `MessagesApiV2.kt` and `MessagesApiV3.kt`. Request and error handling for all API versions, including V3 streaming, is in `RequestHandling.kt`.
-Parameter validation and query construction are organized in `ValidationV1.kt`, `ValidationV2.kt` and `ValidationV3.kt`, with shared validators in `ValidationCommon.kt`.
-Each route maps directly to the corresponding NHN endpoint.
-
-Metrics and health checks are provided through `internalRoutes`.
-
-Route tests are organized by API version in `RoutesV1Spec.kt`, `RoutesV2Spec.kt` and `RoutesV3Spec.kt`. Shared test setup for V1, V2 and V3, including the streaming test server, is in `RoutesTestSetup.kt`.
 
 ## Health and metrics
 
