@@ -67,25 +67,25 @@ fun MessageError.toContent(): TextContent =
             TextContent("Order by must be 1 (Ascending) or 2 (Descending)")
 
         is HerIdsMissing ->
-            TextContent("herIds is required")
+            TextContent("Her ids is required")
 
         is HerIdsEmpty ->
-            TextContent("herIds must not be empty")
+            TextContent("Her ids must not be empty")
 
         is HerIdsInvalidFormat ->
-            TextContent("herIds must contain integers")
+            TextContent("Her ids must contain integers")
 
         is HerIdsInvalidCount ->
-            TextContent("herIds must contain between 1 and $maxItems unique HER IDs")
+            TextContent("Her ids must contain between 1 and $maxItems unique her ids")
 
         is OffsetMissing ->
-            TextContent("offset is required")
+            TextContent("Offset is required")
 
         is OffsetInvalidFormat ->
-            TextContent("offset must be a non-negative 64-bit integer")
+            TextContent("Offset must be a non-negative 64-bit integer")
 
         is NotificationsToFetchInvalidFormat ->
-            TextContent("notificationsToFetch must be between 1 and 1000")
+            TextContent("Notifications to fetch must be between 1 and 1000")
     }
 
 private fun TextContent(

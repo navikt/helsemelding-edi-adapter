@@ -896,7 +896,7 @@ class RoutesV3Spec : StringSpec(
                 val problem = response.body<MshApiProblemDetails>()
 
                 problem.status shouldBe 400
-                problem.detail shouldBe "offset must be a non-negative 64-bit integer"
+                problem.detail shouldBe "Offset must be a non-negative 64-bit integer"
                 problem.instance shouldBe "$ROOT_V3/notifications/stream"
             }
         }
