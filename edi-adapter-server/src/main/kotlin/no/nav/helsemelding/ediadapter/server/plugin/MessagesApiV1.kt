@@ -32,6 +32,7 @@ object MessagesApiV1 {
     const val GET_MESSAGES = "/messages"
 
     val getMessagesDocs: RouteConfig.() -> Unit = {
+        tags = listOf("V1")
         summary = "Get a list of unread messages"
         description = "Get a list of unread messages using the given query parameters"
 
@@ -183,6 +184,7 @@ object MessagesApiV1 {
     const val GET_MESSAGE = "/messages/{messageId}"
 
     val getMessageDocs: RouteConfig.() -> Unit = {
+        tags = listOf("V1")
         summary = "Get message by id"
         description = "Returns a single message. Metadata is always included."
 
@@ -243,6 +245,7 @@ object MessagesApiV1 {
     const val GET_DOCUMENT = "/messages/{messageId}/document"
 
     val getDocumentDocs: RouteConfig.() -> Unit = {
+        tags = listOf("V1")
         summary = "Get business document for message"
         description = "Returns the business document associated with a message."
 
@@ -296,6 +299,7 @@ object MessagesApiV1 {
     const val GET_STATUS = "/messages/{messageId}/status"
 
     val getStatusDocs: RouteConfig.() -> Unit = {
+        tags = listOf("V1")
         summary = "Get message delivery status"
         description = "Returns transport and application receipt status for a message."
 
@@ -349,6 +353,7 @@ object MessagesApiV1 {
     const val GET_APPREC = "/messages/{messageId}/apprec"
 
     val getApprecDocs: RouteConfig.() -> Unit = {
+        tags = listOf("V1")
         summary = "Get application receipt (AppRec) information"
         description =
             "Returns application receipt status and any associated application receipt errors for a message."
@@ -413,6 +418,7 @@ object MessagesApiV1 {
     const val POST_MESSAGE = "/messages"
 
     val postMessageDocs: RouteConfig.() -> Unit = {
+        tags = listOf("V1")
         summary = "Post a new message"
         description =
             "Submits a new message with a business document to one or more receivers."
@@ -491,6 +497,7 @@ object MessagesApiV1 {
     const val POST_APPREC = "/messages/{messageId}/apprec/{apprecSenderHerId}"
 
     val postApprecDocs: RouteConfig.() -> Unit = {
+        tags = listOf("V1")
         summary = "Post application receipt (AppRec)"
         description =
             "Submits an application receipt for a specific message and sender."
@@ -598,6 +605,7 @@ object MessagesApiV1 {
     const val MARK_READ = "/messages/{messageId}/read/{herId}"
 
     val markReadDocs: RouteConfig.() -> Unit = {
+        tags = listOf("V1")
         summary = "Mark message as read"
         description = "Marks a message as read for the given HER ID."
 

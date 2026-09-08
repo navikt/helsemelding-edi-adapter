@@ -23,6 +23,7 @@ object MessagesApiV2 {
     const val GET_NOTICES = "/messages/notices"
 
     val getNoticesDocs: RouteConfig.() -> Unit = {
+        tags = listOf("V2")
         summary = "Get a list of message notices"
         description = "Get a list of message notices for the given receiver HER IDs."
 
@@ -117,6 +118,7 @@ object MessagesApiV2 {
     const val POST_MSH_CONFIGURATION = "/mshConfiguration"
 
     val postMshConfigurationDocs: RouteConfig.() -> Unit = {
+        tags = listOf("V2")
         summary = "Update MSH configuration for given HerIds"
         description = """
             NB! ReceiveNotificationChannel = Kafka is only viable for NHN internal actors.
