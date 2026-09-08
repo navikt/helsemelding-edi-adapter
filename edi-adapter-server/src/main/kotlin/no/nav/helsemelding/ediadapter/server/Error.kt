@@ -20,6 +20,13 @@ data object BusinessDocumentIdEmpty : ValidationError
 data object IncludeMetadataInvalidFormat : ValidationError
 data object MessagesToFetchInvalidFormat : ValidationError
 data object OrderByInvalidFormat : ValidationError
+data object HerIdsMissing : ValidationError
+data object HerIdsEmpty : ValidationError
+data object HerIdsInvalidFormat : ValidationError
+data class HerIdsInvalidCount(val maxItems: Int) : ValidationError
+data object OffsetMissing : ValidationError
+data object OffsetInvalidFormat : ValidationError
+data object NotificationsToFetchInvalidFormat : ValidationError
 
 fun MessageError.toContent(): TextContent =
     when (this) {
@@ -58,6 +65,27 @@ fun MessageError.toContent(): TextContent =
 
         is OrderByInvalidFormat ->
             TextContent("Order by must be 1 (Ascending) or 2 (Descending)")
+
+        is HerIdsMissing ->
+            TextContent("herIds is required")
+
+        is HerIdsEmpty ->
+            TextContent("herIds must not be empty")
+
+        is HerIdsInvalidFormat ->
+            TextContent("herIds must contain integers")
+
+        is HerIdsInvalidCount ->
+            TextContent("herIds must contain between 1 and $maxItems unique HER IDs")
+
+        is OffsetMissing ->
+            TextContent("offset is required")
+
+        is OffsetInvalidFormat ->
+            TextContent("offset must be a non-negative 64-bit integer")
+
+        is NotificationsToFetchInvalidFormat ->
+            TextContent("notificationsToFetch must be between 1 and 1000")
     }
 
 private fun TextContent(

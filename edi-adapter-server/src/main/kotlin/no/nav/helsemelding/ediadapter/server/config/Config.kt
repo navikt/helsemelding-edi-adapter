@@ -91,6 +91,7 @@ data class HttpClient(
     val connectionTimeout: Timeout,
     val apiVersionHeaderV1: ApiVersionHeader,
     val apiVersionHeaderV2: ApiVersionHeader,
+    val apiVersionHeaderV3: ApiVersionHeader,
     val sourceSystemHeader: SourceSystemHeader,
     val acceptTypeHeader: AcceptTypeHeader,
     val logLevel: LogLevel

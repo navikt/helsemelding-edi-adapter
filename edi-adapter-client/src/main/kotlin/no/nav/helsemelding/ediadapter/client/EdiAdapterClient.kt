@@ -17,18 +17,18 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.HttpStatusCode.Companion.NoContent
 import io.ktor.http.contentType
-import no.nav.helsemelding.ediadapter.model.ApprecInfo
-import no.nav.helsemelding.ediadapter.model.ErrorMessage
-import no.nav.helsemelding.ediadapter.model.GetBusinessDocumentResponse
-import no.nav.helsemelding.ediadapter.model.GetMessagesRequest
-import no.nav.helsemelding.ediadapter.model.GetNoticesRequest
-import no.nav.helsemelding.ediadapter.model.Message
-import no.nav.helsemelding.ediadapter.model.Metadata
-import no.nav.helsemelding.ediadapter.model.Notice
-import no.nav.helsemelding.ediadapter.model.PostAppRecRequest
-import no.nav.helsemelding.ediadapter.model.PostMessageRequest
-import no.nav.helsemelding.ediadapter.model.PostMshConfigurationRequest
-import no.nav.helsemelding.ediadapter.model.StatusInfo
+import no.nav.helsemelding.ediadapter.model.common.ErrorMessage
+import no.nav.helsemelding.ediadapter.model.common.GetBusinessDocumentResponse
+import no.nav.helsemelding.ediadapter.model.v1.ApprecInfo
+import no.nav.helsemelding.ediadapter.model.v1.GetMessagesRequest
+import no.nav.helsemelding.ediadapter.model.v1.Message
+import no.nav.helsemelding.ediadapter.model.v1.Metadata
+import no.nav.helsemelding.ediadapter.model.v1.PostAppRecRequest
+import no.nav.helsemelding.ediadapter.model.v1.PostMessageRequest
+import no.nav.helsemelding.ediadapter.model.v1.StatusInfo
+import no.nav.helsemelding.ediadapter.model.v2.GetNoticesRequest
+import no.nav.helsemelding.ediadapter.model.v2.Notice
+import no.nav.helsemelding.ediadapter.model.v2.PostMshConfigurationRequest
 import kotlin.uuid.Uuid
 
 private val log = KotlinLogging.logger {}

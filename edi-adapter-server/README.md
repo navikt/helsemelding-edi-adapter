@@ -1,14 +1,14 @@
 # edi-adapter-server
 
 The edi-adapter-server is an [anti corruption layer (ACL)](https://ddd-practitioners.com/home/glossary/bounded-context/bounded-context-relationship/anticorruption-layer/) between the external NHN Meldingstjener API (EDI 2.0) and our internal services.
-It provides a stable internal interface under `/api/v1/*` so the rest of the ecosystem remains unaffected by external API changes.
+It exposes the existing `/api/v1/*` and `/api/v2/*` contracts alongside `/api/v3/*` for NHN API V3.
 
 Internal consumers typically interact with this API through `edi-adapter-client`.
 
 **Key Takeaways:**
 
-* Internal consumers use `/api/v1/*` only.
-* New and experimental features are available under `/api/v2/*`.
+* Existing consumers can continue using `/api/v1/*` and `/api/v2/*`.
+* `/api/v2/*` retains the existing experimental contract; `/api/v3/*` exposes the NHN V3 contract.
 * The adapter manages all communication and error handling with NHN.
 * Authentication and certificates are configured in `ediClient`.
 * Metrics are collected through `PrometheusMeterRegistry`.
@@ -22,7 +22,7 @@ Internal consumers typically interact with this API through `edi-adapter-client`
 
 ## Our API (internal)
 
-Routes are versioned under `/api/v1` and `/api/v2`. The v2 routes expose new and experimental features available in the NHN EDI 2.0 API.
+Routes are versioned under `/api/v1`, `/api/v2`, and `/api/v3`. Their upstream `api-version` headers are `2`, `2-vNext`, and `3`, respectively. All external routes use the same Azure AD authentication.
 
 ### v1
 
@@ -44,6 +44,42 @@ Routes are versioned under `/api/v1` and `/api/v2`. The v2 routes expose new and
 | GET    | `/api/v2/messages/notices` | Fetch notices for given receiver(s)       | `GET /Messages/notices`      |
 | POST   | `/api/v2/mshConfiguration` | Update MSH configuration for given HerIds | `POST /MshConfiguration`     |
 
+### v3
+
+The V3 routes use a separate NHN client with `api-version: 3`. Request and response models are in `no.nav.helsemelding.ediadapter.model.v3`.
+
+| Method | Path | Calls external NHN endpoint |
+|--------|------|----------------------------|
+| GET | `/api/v3/notifications` | `GET /notifications` |
+| GET | `/api/v3/notifications/stream` | `GET /notifications/stream` (SSE) |
+| POST | `/api/v3/messages` | `POST /messages` |
+| GET | `/api/v3/messages/{messageId}` | `GET /messages/{id}` |
+| GET | `/api/v3/messages/{messageId}/document` | `GET /messages/{id}/business-document` |
+| GET | `/api/v3/messages/{messageId}/status` | `GET /messages/{id}/status` |
+| POST | `/api/v3/messages/{messageId}/apprec` | `POST /messages/{id}/apprec` |
+| PUT | `/api/v3/messages/{messageId}/downloaded` | `PUT /messages/{id}/downloaded` |
+| PUT | `/api/v3/mshconfigurations` | `PUT /mshconfigurations` |
+| DELETE | `/api/v3/mshconfigurations` | `DELETE /mshconfigurations` |
+| GET | `/api/v3/ping` | `GET /ping` |
+
+Notification polling takes repeated `herIds`, a required non-negative 64-bit `offset`, and optional `notificationsToFetch` (1–1000, NHN default 100):
+
+```text
+GET /api/v3/notifications?herIds=42&herIds=1337&offset=0&notificationsToFetch=100
+```
+
+Polling and SSE accept at most 1500 unique HER IDs. SSE takes `herIds` and an optional `offset`; omitting the offset starts at the end of the stream, as specified in OpenAPI. The response is `text/event-stream`, forwarded incrementally. Consumers must reconnect after disconnection and persist their last successfully processed offset. Offsets are global and may have gaps.
+
+Sending messages and AppRecs returns `202 Accepted` with an object containing `id`. Any `Location` header is preserved. AppRec sender HER ID is supplied in the request body. Marking a message as downloaded takes `{ "receiverHerId": 42 }` and returns `204`.
+
+MSH configuration uses `PUT` with `{ "configurations": [...] }`, and `receiveNotificationChannel: "Api"`. Deletion takes repeated `herIds` query parameters. The adapter preserves NHN's response status; the published DELETE specification does not declare a success code.
+
+NHN errors are forwarded as received; local V3 validation and processing errors use `MshApiProblemDetails`. V1/V2 error handling and contracts remain unchanged. The existing Kotlin client still targets V1/V2.
+
+Before processing V3 messages, configure every HER ID. Consumers should handle duplicates and coordinate the switch from V2 processing, following the [NHN migration guide](https://utviklerportal.nhn.no/informasjonstjenester/meldingsutveksling/edi-20/edi-20-ekstern-docs/docs/api-version-3/migration_to_v3_engbmd).
+
+Reference: [NHN V3 OpenAPI](https://utviklerportal.nhn.no/informasjonstjenester/meldingsutveksling/edi-20/edi-20-ekstern-docs/openapi/meldingstjener-api-test-v3-internett). AppRec status is serialized using the schema's string enum values (`Ok`, `Rejected`, `OkErrorInMessagePart`); some upstream examples still show numeric codes.
+
 ## API documentation (Swagger)
 
 The EDI Adapter exposes OpenAPI/Swagger documentation for its internal API.
@@ -52,16 +88,19 @@ When running the server locally, the documentation is available at:
 
 - `/swagger`
 
-The Swagger UI reflects the `/api/v1/*` and `/api/v2/*` endpoints exposed by this service and can be used to explore and test the API locally.
+The Swagger UI reflects the `/api/v1/*`, `/api/v2/*`, and `/api/v3/*` endpoints exposed by this service and can be used to explore and test the API locally.
 
 Swagger is only intended for local development and internal use.
 
 ## Implementation overview
 
-Adapter API routes are defined in `externalRoutes`. v1 routes are registered under `/api/v1` and v2 routes under `/api/v2`.
+Adapter API routes are registered in `externalRoutes` in `Routes.kt`, which delegates to `RoutesV1.kt`, `RoutesV2.kt` and `RoutesV3.kt`. Swagger definitions are organized by API version in `MessagesApiV1.kt`, `MessagesApiV2.kt` and `MessagesApiV3.kt`. Request and error handling for all API versions, including V3 streaming, is in `RequestHandling.kt`.
+Parameter validation and query construction are organized in `ValidationV1.kt`, `ValidationV2.kt` and `ValidationV3.kt`, with shared validators in `ValidationCommon.kt`.
 Each route maps directly to the corresponding NHN endpoint.
 
 Metrics and health checks are provided through `internalRoutes`.
+
+Route tests are organized by API version in `RoutesV1Spec.kt`, `RoutesV2Spec.kt` and `RoutesV3Spec.kt`. Shared test setup for V1, V2 and V3, including the streaming test server, is in `RoutesTestSetup.kt`.
 
 ## Health and metrics
 
@@ -101,14 +140,14 @@ configureAuthentication()
 In Routes.kt change the following:
 ```kotlin
 authenticate(config().azureAuth.issuer.value) {
-    externalRoutes(ediClientV1, ediClientV2)
+    externalRoutes(ediClientV1, ediClientV2, ediClientV3)
 }
 ```
 
 to:
 ```kotlin
 // authenticate(config().azureAuth.issuer.value) {
-    externalRoutes(ediClientV1, ediClientV2)
+    externalRoutes(ediClientV1, ediClientV2, ediClientV3)
 // }
 ```
 
@@ -119,4 +158,3 @@ Change working directory from (example for Windows):
 
 to:
 > path\to\project\helsemelding-edi-adapter\edi-adapter-server
-
