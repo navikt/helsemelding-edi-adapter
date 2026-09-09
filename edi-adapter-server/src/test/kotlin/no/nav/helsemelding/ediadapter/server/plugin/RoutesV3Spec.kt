@@ -64,13 +64,13 @@ class RoutesV3Spec : StringSpec(
                             "relatedMessageId": "$V3_MESSAGE_ID",
                             "type": "MessageDeliveryStateUpdated",
                             "notificationReceiverHerId": 42,
-                            "offset": 4294967297
+                            "offset": 2147483647
                         }
                     ]
                 }"""
 
             val ediClientV3 = fakeEdiClient { request ->
-                request.url.fullPath shouldBe "/notifications?HerIds=42&HerIds=1337&Offset=4294967296&NotificationsToFetch=1000"
+                request.url.fullPath shouldBe "/notifications?HerIds=42&HerIds=1337&Offset=2147483646&NotificationsToFetch=1000"
                 respond(payload, headers = jsonHeaders)
             }
 
@@ -79,11 +79,11 @@ class RoutesV3Spec : StringSpec(
                 client = createJsonEnabledClient()
 
                 val response =
-                    client.get("$ROOT_V3/notifications?herIds=42&herIds=1337&offset=4294967296&notificationsToFetch=1000")
+                    client.get("$ROOT_V3/notifications?herIds=42&herIds=1337&offset=2147483646&notificationsToFetch=1000")
 
                 response.status shouldBe OK
                 response.bodyAsText() shouldBe payload
-                response.body<GetNotificationsResponse>().notifications.single().offset shouldBe 4294967297L
+                response.body<GetNotificationsResponse>().notifications.single().offset shouldBe 2147483647
             }
         }
 
@@ -256,14 +256,14 @@ class RoutesV3Spec : StringSpec(
             }
         }
 
-        "GET /notifications with offset exceeding Long range returns 400" {
+        "GET /notifications with offset exceeding Int range returns 400" {
             val ediClientV3 = fakeEdiClient { error("Should not be called") }
 
             testApplication {
                 installExternalRoutes(ediClientV3 = ediClientV3)
                 client = createJsonEnabledClient()
 
-                val response = client.get("$ROOT_V3/notifications?herIds=42&offset=9223372036854775808")
+                val response = client.get("$ROOT_V3/notifications?herIds=42&offset=2147483648")
 
                 response.status shouldBe BadRequest
                 val problem = response.body<MshApiProblemDetails>()
@@ -887,7 +887,7 @@ class RoutesV3Spec : StringSpec(
                 val problem = response.body<MshApiProblemDetails>()
 
                 problem.status shouldBe 400
-                problem.detail shouldBe "Offset must be a non-negative 64-bit integer"
+                problem.detail shouldBe "Offset must be a non-negative 32-bit integer"
                 problem.instance shouldBe "$ROOT_V3/notifications/stream"
             }
         }

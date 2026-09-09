@@ -3,362 +3,440 @@ package no.nav.helsemelding.ediadapter.client
 import arrow.core.Either
 import arrow.core.Either.Left
 import arrow.core.Either.Right
+import arrow.core.getOrElse
+import arrow.core.nonFatalOrThrow
+import arrow.core.raise.Raise
+import arrow.core.raise.catch
+import arrow.core.raise.either
+import arrow.core.raise.ensure
+import arrow.resilience.Schedule
+import arrow.resilience.Schedule.Decision.Continue
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.HttpClient
-import io.ktor.client.call.body
-import io.ktor.client.request.get
-import io.ktor.client.request.post
-import io.ktor.client.request.put
+import io.ktor.client.plugins.sse.ClientSSESessionWithDeserialization
+import io.ktor.client.plugins.sse.SSEClientException
+import io.ktor.client.plugins.sse.deserialize
+import io.ktor.client.plugins.sse.serverSentEventsSession
+import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.request.accept
+import io.ktor.client.request.parameter
+import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.client.statement.request
 import io.ktor.http.ContentType
+import io.ktor.http.HttpMethod
+import io.ktor.http.HttpMethod.Companion.Delete
+import io.ktor.http.HttpMethod.Companion.Get
+import io.ktor.http.HttpMethod.Companion.Post
+import io.ktor.http.HttpMethod.Companion.Put
 import io.ktor.http.HttpStatusCode
-import io.ktor.http.HttpStatusCode.Companion.NoContent
 import io.ktor.http.contentType
-import no.nav.helsemelding.ediadapter.model.common.ErrorMessage
+import io.ktor.http.isSuccess
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.serializer
 import no.nav.helsemelding.ediadapter.model.common.GetBusinessDocumentResponse
-import no.nav.helsemelding.ediadapter.model.v1.ApprecInfo
-import no.nav.helsemelding.ediadapter.model.v1.GetMessagesRequest
-import no.nav.helsemelding.ediadapter.model.v1.Message
-import no.nav.helsemelding.ediadapter.model.v1.Metadata
-import no.nav.helsemelding.ediadapter.model.v1.PostAppRecRequest
-import no.nav.helsemelding.ediadapter.model.v1.PostMessageRequest
-import no.nav.helsemelding.ediadapter.model.v1.StatusInfo
-import no.nav.helsemelding.ediadapter.model.v2.GetNoticesRequest
-import no.nav.helsemelding.ediadapter.model.v2.Notice
-import no.nav.helsemelding.ediadapter.model.v2.PostMshConfigurationRequest
+import no.nav.helsemelding.ediadapter.model.v3.GetMessageResponse
+import no.nav.helsemelding.ediadapter.model.v3.GetNotificationsResponse
+import no.nav.helsemelding.ediadapter.model.v3.GetStatusResponse
+import no.nav.helsemelding.ediadapter.model.v3.MarkAsDownloadedRequest
+import no.nav.helsemelding.ediadapter.model.v3.MshApiProblemDetails
+import no.nav.helsemelding.ediadapter.model.v3.Notification
+import no.nav.helsemelding.ediadapter.model.v3.PingResponse
+import no.nav.helsemelding.ediadapter.model.v3.PostAppRecRequest
+import no.nav.helsemelding.ediadapter.model.v3.PostApprecResponse
+import no.nav.helsemelding.ediadapter.model.v3.PostMessageRequest
+import no.nav.helsemelding.ediadapter.model.v3.PostMessageResponse
+import no.nav.helsemelding.ediadapter.model.v3.SetMshConfigurationsRequest
+import java.io.IOException
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
 private val log = KotlinLogging.logger {}
 
 /**
- * Client for communicating with the EDI Adapter service.
+ * Typed client for the EDI Adapter's V3 API, including notification streaming through [Flow].
  *
- * Provides access to EDI messages, AppRec handling, and MSH configuration
- * through the NHN EDI API.
+ * Requests return [Either] with an [EdiAdapterError] on failure. Notification streams reconnect
+ * automatically on transient failures; ordinary HTTP requests are not retried. Cancellation propagates.
  *
- * All operations return [Either] where [Either.Left] contains an [ErrorMessage]
- * on failure, and [Either.Right] contains the successful result.
- *
+ * Cancel active notification collections before calling [close] to release the client's resources.
  */
-interface EdiAdapterClient {
+interface EdiAdapterClient : AutoCloseable {
     /**
-     * Retrieves AppRec (application receipt) information for a message.
+     * Fetches notifications for the requested her ids after a stored offset.
      *
-     * @param id the unique identifier of the message to look up AppRec info for
-     * @return a list of [ApprecInfo] entries, one per receiver HER-ID, or an [ErrorMessage] on failure
+     * @param herIds Between 1 and 1500 unique receiver her ids.
+     * @param offset Last processed notification offset, or `0` when no offset has been stored. Must be nonnegative.
+     * @param notificationsToFetch Maximum number of notifications to fetch, from 1 to 1000. Null uses the server default.
+     * @return [Either.Right] containing the notifications, possibly empty, or [Either.Left] containing an [EdiAdapterError].
      */
-    suspend fun getApprecInfo(id: Uuid): Either<ErrorMessage, List<ApprecInfo>>
+    suspend fun getNotifications(
+        herIds: List<Int>,
+        offset: Int,
+        notificationsToFetch: Int? = null
+    ): Either<EdiAdapterError, GetNotificationsResponse>
 
     /**
-     * Retrieves messages matching the given filter criteria.
+     * Fetches notifications for a single her id after a stored offset.
      *
-     * @param getMessagesRequest filter and pagination parameters for the query
-     * @return a list of matching [Message] objects, or an [ErrorMessage] on failure
+     * @param herId Receiver her id whose notifications to fetch.
+     * @param offset Last processed notification offset, or `0` when no offset has been stored. Must be nonnegative.
+     * @param notificationsToFetch Maximum number of notifications to fetch, from 1 to 1000. Null uses the server default.
+     * @return [Either.Right] containing the notifications, possibly empty, or [Either.Left] containing an [EdiAdapterError].
      */
-    suspend fun getMessages(getMessagesRequest: GetMessagesRequest): Either<ErrorMessage, List<Message>>
+    suspend fun getNotifications(
+        herId: Int,
+        offset: Int,
+        notificationsToFetch: Int? = null
+    ): Either<EdiAdapterError, GetNotificationsResponse> =
+        getNotifications(listOf(herId), offset, notificationsToFetch)
 
     /**
-     * Retrieves notices for the given receiver HER-IDs.
+     * Opens a cold stream of notifications; each collection owns its connection.
      *
-     * This function is part of the experimental NHN EDI v2/vNext API and may
-     * change or be removed without prior notice.
+     * Reconnects on EOF, transport failures and HTTP 408, 429 or 5xx, with capped exponential backoff.
+     * Other HTTP errors and invalid notifications emit one Left and end the flow. HTTP 204 ends it normally.
+     * Empty `connected` events and events other than `notification` are ignored.
      *
-     * @param getNoticesRequest filter parameters including receiver HER-IDs and message count
-     * @return a list of [Notice] objects, or an [ErrorMessage] on failure
+     * [offset] is the initial nonnegative offset. Use `0` on first startup or when no processed offset
+     * has been stored; otherwise use the latest stored offset.
+     * Each collection advances its reconnect offset after emitting a notification. With buffering,
+     * emission does not guarantee that processing has completed.
+     * Persist processed offsets separately for recovery after cancellation or application restart.
+     * Null starts at the current tail until the first notification is emitted; reconnects before that
+     * can miss notifications during disconnection. Processing should tolerate redelivery.
+     * Cancelling collection closes the connection. Configuration errors, unexpected failures and
+     * exceptions from the collector propagate without reconnecting.
+     *
+     * @param herIds Between 1 and 1500 unique receiver her ids whose notifications to stream.
+     * @param offset Initial nonnegative offset. Use the latest stored offset, or `0` on first startup.
+     *     Null starts at the current end of the stream.
+     * @return A cold [Flow] emitting [Either.Right] notifications or a terminal [Either.Left] with an
+     *     [EdiAdapterError]. Retryable failures are handled internally without emitting a Left.
      */
-    @ExperimentalEdiAdapterApi
-    suspend fun getNotices(getNoticesRequest: GetNoticesRequest): Either<ErrorMessage, List<Notice>>
+    fun streamNotifications(herIds: List<Int>, offset: Int? = null): Flow<Either<EdiAdapterError, Notification>>
 
     /**
-     * Sends a new message to the adapter.
+     * Streams notifications for a single her id. Use `0` on first startup or when no processed offset
+     * has been stored; otherwise use the latest stored offset. Omitting [offset] starts at the current tail.
+     * Uses the same reconnect, error handling and cancellation behavior as the list overload.
      *
-     * @param postMessagesRequest the message payload, content type, encoding, and optional overrides
-     * @return [Metadata] with the assigned message ID and storage location, or an [ErrorMessage] on failure
+     * @param herId Receiver her id whose notifications to stream.
+     * @param offset Initial nonnegative offset, or null to start at the current end of the stream.
+     * @return A cold [Flow] emitting [Either.Right] notifications or a terminal [Either.Left] with an
+     *     [EdiAdapterError]. Retryable failures are handled internally without emitting a Left.
      */
-    suspend fun postMessage(postMessagesRequest: PostMessageRequest): Either<ErrorMessage, Metadata>
+    fun streamNotifications(
+        herId: Int,
+        offset: Int? = null
+    ): Flow<Either<EdiAdapterError, Notification>> = streamNotifications(listOf(herId), offset)
 
     /**
-     * Retrieves a single message by its unique identifier.
+     * Submits a business document for delivery to its recipients.
      *
-     * @param id the unique identifier of the message
-     * @return the [Message], or an [ErrorMessage] if not found or on failure
+     * Acceptance does not mean that delivery or application processing has completed; use [getMessageStatus]
+     * or notifications to follow progress.
+     *
+     * @param request Encoded business document, sender and receiver her ids, content metadata and application details.
+     * @return [Either.Right] containing the accepted submission's [PostMessageResponse], or [Either.Left]
+     *     containing an [EdiAdapterError].
      */
-    suspend fun getMessage(id: Uuid): Either<ErrorMessage, Message>
+    suspend fun postMessage(request: PostMessageRequest): Either<EdiAdapterError, PostMessageResponse>
 
     /**
-     * Retrieves the raw XML payload for a message.
+     * Retrieves a message's addressing and business document metadata.
      *
-     * @param id the unique identifier of the message
-     * @return a [GetBusinessDocumentResponse] containing the document, content type, and encoding,
-     *   or an [ErrorMessage] on failure
+     * @param id Identifier of the message to retrieve.
+     * @return [Either.Right] containing [GetMessageResponse], or [Either.Left] containing an [EdiAdapterError].
      */
-    suspend fun getBusinessDocument(id: Uuid): Either<ErrorMessage, GetBusinessDocumentResponse>
+    suspend fun getMessage(id: Uuid): Either<EdiAdapterError, GetMessageResponse>
 
     /**
-     * Retrieves the delivery and AppRec status for a message, per receiver HER-ID.
+     * Retrieves the encoded business document associated with a message.
      *
-     * @param id the unique identifier of the message
-     * @return a list of [StatusInfo] entries, one per receiver, or an [ErrorMessage] on failure
+     * @param id Identifier of the message whose document to retrieve.
+     * @return [Either.Right] containing the document, content type and transfer encoding in
+     *     [GetBusinessDocumentResponse], or [Either.Left] containing an [EdiAdapterError].
      */
-    suspend fun getMessageStatus(id: Uuid): Either<ErrorMessage, List<StatusInfo>>
+    suspend fun getBusinessDocument(id: Uuid): Either<EdiAdapterError, GetBusinessDocumentResponse>
 
     /**
-     * Sends an AppRec (application receipt) for a received message.
+     * Retrieves delivery state and application receipt information for each receiver of a message.
      *
-     * @param id the unique identifier of the message to acknowledge
-     * @param apprecSenderHerId the HER-ID of the party sending the AppRec
-     * @param postAppRecRequest the AppRec status, optional error list, and optional ebXML overrides
-     * @return [Metadata] with the assigned AppRec message ID and location, or an [ErrorMessage] on failure
+     * @param id Identifier of the message whose status to retrieve.
+     * @return [Either.Right] containing the receiver statuses in [GetStatusResponse], or [Either.Left]
+     *     containing an [EdiAdapterError].
      */
-    suspend fun postApprec(
-        id: Uuid,
-        apprecSenderHerId: Int,
-        postAppRecRequest: PostAppRecRequest
-    ): Either<ErrorMessage, Metadata>
+    suspend fun getMessageStatus(id: Uuid): Either<EdiAdapterError, GetStatusResponse>
 
     /**
-     * Marks a message as read for the given HER-ID.
+     * Submits an application receipt for a received message.
      *
-     * @param id the unique identifier of the message to mark as read
-     * @param herId the HER-ID of the receiver marking the message as read
-     * @return `true` on success (HTTP 204), or an [ErrorMessage] on failure
+     * @param id Identifier of the original message being acknowledged.
+     * @param request Receipt sender her id, processing status, application details and any rejection errors.
+     * @return [Either.Right] containing the accepted receipt submission's [PostApprecResponse], or [Either.Left]
+     *     containing an [EdiAdapterError].
      */
-    suspend fun markMessageAsRead(id: Uuid, herId: Int): Either<ErrorMessage, Boolean>
+    suspend fun postApprec(id: Uuid, request: PostAppRecRequest): Either<EdiAdapterError, PostApprecResponse>
 
     /**
-     * Sends MSH (Message Service Handler) configuration.
+     * Marks a message as downloaded by a specific receiver.
      *
-     * This function is part of the experimental NHN EDI v2/vNext API and may
-     * change or be removed without prior notice.
-     *
-     * @param postMshConfigurationRequest the MSH configuration to apply
-     * @return [Unit] on success (HTTP 204), or an [ErrorMessage] on failure
+     * @param id Identifier of the downloaded message.
+     * @param request Receiver her id for which the message should be marked as downloaded.
+     * @return [Either.Right] containing [Unit] on success, or [Either.Left] containing an [EdiAdapterError].
      */
-    @ExperimentalEdiAdapterApi
-    suspend fun postMshConfiguration(postMshConfigurationRequest: PostMshConfigurationRequest): Either<ErrorMessage, Unit>
+    suspend fun markMessageAsDownloaded(id: Uuid, request: MarkAsDownloadedRequest): Either<EdiAdapterError, Unit>
 
     /**
-     * Closes the underlying HTTP client and releases resources.
+     * Creates or updates message handler configurations for the supplied communication parties.
      *
-     * Should be called when the client is no longer needed to free connections.
+     * @param request Configurations containing her ids, notification channels and optional client locks and rejection filters.
+     * @return [Either.Right] containing [Unit] on success, or [Either.Left] containing an [EdiAdapterError].
      */
-    fun close()
+    suspend fun setMshConfigurations(request: SetMshConfigurationsRequest): Either<EdiAdapterError, Unit>
+
+    /**
+     * Deletes message handler configurations for the specified her ids.
+     *
+     * @param herIds Communication party her ids whose configurations should be deleted.
+     * @return [Either.Right] containing [Unit] on success, or [Either.Left] containing an [EdiAdapterError].
+     */
+    suspend fun deleteMshConfigurations(herIds: List<Int>): Either<EdiAdapterError, Unit>
+
+    /**
+     * Checks connectivity to NHN through the adapter.
+     *
+     * @return [Either.Right] containing the response text and available timestamp in [PingResponse],
+     *     or [Either.Left] containing an [EdiAdapterError].
+     */
+    suspend fun ping(): Either<EdiAdapterError, PingResponse>
+
+    /**
+     * Closes the underlying HTTP client and releases its resources.
+     *
+     * Cancel active notification collections before closing. Do not reuse the client afterwards.
+     *
+     * @return [Unit] after requesting shutdown of the HTTP client.
+     */
+    override fun close()
 }
 
-/**
- * HTTP-based implementation of [EdiAdapterClient].
- *
- * Communicates with the EDI Adapter service over HTTP using the provided [HttpClient].
- * Use [scopedAuthHttpClient] to create a pre-configured client with Azure AD bearer token support.
- *
- * @param clientProvider factory function that creates the underlying [HttpClient]
- * @param ediAdapterUrl base URL of the EDI Adapter service; defaults to the value from
- *   the `edi-adapter-client.conf` configuration file
- */
 class HttpEdiAdapterClient(
     clientProvider: () -> HttpClient,
-    private val ediAdapterUrl: String = config().ediAdapterServer.url.toString()
+    ediAdapterUrl: String = config().ediAdapterServer.url.toString()
 ) : EdiAdapterClient {
-    private var httpClient = clientProvider.invoke()
+    private val baseUrl = "${ediAdapterUrl.trimEnd('/')}/api/v3"
+    private val json = Json { ignoreUnknownKeys = true }
+    private val httpClient = clientProvider()
+    private val reconnectSchedule = Schedule.exponential<Unit>(1.seconds)
+        .delayed { _, duration -> duration.coerceAtMost(30.seconds) }
+        .jittered(min = 0.5, max = 1.0)
 
-    /**
-     * Retrieves AppRec (application receipt) information for a message.
-     *
-     * @param id the unique identifier of the message to look up AppRec info for
-     * @return a list of [ApprecInfo] entries, one per receiver HER-ID, or an [ErrorMessage] on failure
-     */
-    override suspend fun getApprecInfo(id: Uuid): Either<ErrorMessage, List<ApprecInfo>> {
-        val url = "$ediAdapterUrl/api/v1/messages/$id/apprec"
-        val response = httpClient.get(url) {
-            contentType(ContentType.Application.Json)
-        }.withLogging()
-
-        return handleResponse(response)
+    override suspend fun getNotifications(
+        herIds: List<Int>,
+        offset: Int,
+        notificationsToFetch: Int?
+    ): Either<EdiAdapterError, GetNotificationsResponse> = request(Get, "notifications") {
+        herIds.forEach { parameter("herIds", it) }
+        parameter("offset", offset)
+        parameter("notificationsToFetch", notificationsToFetch)
     }
 
-    /**
-     * Retrieves messages matching the given filter criteria.
-     *
-     * @param getMessagesRequest filter and pagination parameters for the query
-     * @return a list of matching [Message] objects, or an [ErrorMessage] on failure
-     */
-    override suspend fun getMessages(getMessagesRequest: GetMessagesRequest): Either<ErrorMessage, List<Message>> {
-        val url = "$ediAdapterUrl/api/v1/messages?${getMessagesRequest.toUrlParams()}"
-        val response = httpClient.get(url) {
-            contentType(ContentType.Application.Json)
-        }.withLogging()
+    override suspend fun postMessage(request: PostMessageRequest): Either<EdiAdapterError, PostMessageResponse> =
+        request(Post, "messages") { jsonBody(request) }
 
-        return handleResponse(response)
-    }
+    override suspend fun getMessage(id: Uuid): Either<EdiAdapterError, GetMessageResponse> =
+        request(Get, "messages/$id")
 
-    /**
-     * Retrieves notices for the given receiver HER-IDs.
-     *
-     * This function is part of the experimental NHN EDI v2/vNext API and may
-     * change or be removed without prior notice.
-     *
-     * @param getNoticesRequest filter parameters including receiver HER-IDs and message count
-     * @return a list of [Notice] objects, or an [ErrorMessage] on failure
-     */
-    @ExperimentalEdiAdapterApi
-    override suspend fun getNotices(getNoticesRequest: GetNoticesRequest): Either<ErrorMessage, List<Notice>> {
-        val url = "$ediAdapterUrl/api/v2/messages/notices?${getNoticesRequest.toUrlParams()}"
-        val response = httpClient.get(url) {
-            contentType(ContentType.Application.Json)
-        }.withLogging()
+    override suspend fun getBusinessDocument(id: Uuid): Either<EdiAdapterError, GetBusinessDocumentResponse> =
+        request(Get, "messages/$id/document")
 
-        return handleResponse(response)
-    }
+    override suspend fun getMessageStatus(id: Uuid): Either<EdiAdapterError, GetStatusResponse> =
+        request(Get, "messages/$id/status")
 
-    /**
-     * Sends a new message to the adapter.
-     *
-     * @param postMessagesRequest the message payload, content type, encoding, and optional overrides
-     * @return [Metadata] with the assigned message ID and storage location, or an [ErrorMessage] on failure
-     */
-    override suspend fun postMessage(postMessagesRequest: PostMessageRequest): Either<ErrorMessage, Metadata> {
-        val url = "$ediAdapterUrl/api/v1/messages"
-        val response = httpClient.post(url) {
-            contentType(ContentType.Application.Json)
-            setBody(postMessagesRequest)
-        }.withLogging()
+    override suspend fun postApprec(id: Uuid, request: PostAppRecRequest): Either<EdiAdapterError, PostApprecResponse> =
+        request(Post, "messages/$id/apprec") { jsonBody(request) }
 
-        return handleResponse(response)
-    }
-
-    /**
-     * Retrieves a single message by its unique identifier.
-     *
-     * @param id the unique identifier of the message
-     * @return the [Message], or an [ErrorMessage] if not found or on failure
-     */
-    override suspend fun getMessage(id: Uuid): Either<ErrorMessage, Message> {
-        val url = "$ediAdapterUrl/api/v1/messages/$id"
-        val response = httpClient.get(url) {
-            contentType(ContentType.Application.Json)
-        }.withLogging()
-
-        return handleResponse(response)
-    }
-
-    /**
-     * Retrieves the raw XML payload for a message.
-     *
-     * @param id the unique identifier of the message
-     * @return a [GetBusinessDocumentResponse] containing the document, content type, and encoding,
-     *   or an [ErrorMessage] on failure
-     */
-    override suspend fun getBusinessDocument(id: Uuid): Either<ErrorMessage, GetBusinessDocumentResponse> {
-        val url = "$ediAdapterUrl/api/v1/messages/$id/document"
-        val response = httpClient.get(url) {
-            contentType(ContentType.Application.Json)
-        }.withLogging()
-
-        return handleResponse(response)
-    }
-
-    /**
-     * Retrieves the delivery and AppRec status for a message, per receiver HER-ID.
-     *
-     * @param id the unique identifier of the message
-     * @return a list of [StatusInfo] entries, one per receiver, or an [ErrorMessage] on failure
-     */
-    override suspend fun getMessageStatus(id: Uuid): Either<ErrorMessage, List<StatusInfo>> {
-        val url = "$ediAdapterUrl/api/v1/messages/$id/status"
-        val response = httpClient.get(url) {
-            contentType(ContentType.Application.Json)
-        }.withLogging()
-
-        return handleResponse(response)
-    }
-
-    /**
-     * Sends an AppRec (application receipt) for a received message.
-     *
-     * @param id the unique identifier of the message to acknowledge
-     * @param apprecSenderHerId the HER-ID of the party sending the AppRec
-     * @param postAppRecRequest the AppRec status, optional error list, and optional ebXML overrides
-     * @return [Metadata] with the assigned AppRec message ID and location, or an [ErrorMessage] on failure
-     */
-    override suspend fun postApprec(
+    override suspend fun markMessageAsDownloaded(
         id: Uuid,
-        apprecSenderHerId: Int,
-        postAppRecRequest: PostAppRecRequest
-    ): Either<ErrorMessage, Metadata> {
-        val url = "$ediAdapterUrl/api/v1/messages/$id/apprec/$apprecSenderHerId"
-        val response = httpClient.post(url) {
-            contentType(ContentType.Application.Json)
-            setBody(postAppRecRequest)
-        }.withLogging()
+        request: MarkAsDownloadedRequest
+    ): Either<EdiAdapterError, Unit> =
+        request(Put, "messages/$id/downloaded") { jsonBody(request) }
 
-        return handleResponse(response)
-    }
+    override suspend fun setMshConfigurations(request: SetMshConfigurationsRequest): Either<EdiAdapterError, Unit> =
+        request(Put, "mshconfigurations") { jsonBody(request) }
 
-    /**
-     * Marks a message as read for the given HER-ID.
-     *
-     * @param id the unique identifier of the message to mark as read
-     * @param herId the HER-ID of the receiver marking the message as read
-     * @return `true` on success (HTTP 204), or an [ErrorMessage] on failure
-     */
-    override suspend fun markMessageAsRead(id: Uuid, herId: Int): Either<ErrorMessage, Boolean> {
-        val url = "$ediAdapterUrl/api/v1/messages/$id/read/$herId"
-        val response = httpClient.put(url) {
-            contentType(ContentType.Application.Json)
-        }.withLogging()
+    override suspend fun deleteMshConfigurations(herIds: List<Int>): Either<EdiAdapterError, Unit> =
+        request(Delete, "mshconfigurations") {
+            herIds.forEach { parameter("herIds", it) }
+        }
 
-        return if (response.status == NoContent) {
-            Right(true)
-        } else {
-            Left(response.body())
+    override suspend fun ping(): Either<EdiAdapterError, PingResponse> = request(Get, "ping")
+
+    override fun streamNotifications(
+        herIds: List<Int>,
+        offset: Int?
+    ): Flow<Either<EdiAdapterError, Notification>> = flow {
+        either {
+            var resumeOffset = offset
+            var reconnect = reconnectSchedule.step
+            while (true) {
+                val finished = collectNotifications(herIds, resumeOffset) { notification ->
+                    emit(Right(notification))
+                    resumeOffset = notification.offset
+                    reconnect = reconnectSchedule.step
+                }
+                    .getOrElse { error ->
+                        ensure(shouldReconnect(error)) { emit(Left(error)) }
+                        false
+                    }
+                ensure(!finished) { }
+                // NHN resumes via the notification offset, rather than SSE's Last-Event-ID.
+                val decision = reconnect(Unit)
+                ensure(decision is Continue) { }
+                log.debug { "Reconnecting notification stream in ${decision.delay}" }
+                delay(decision.delay)
+                reconnect = decision.step
+            }
         }
     }
 
-    /**
-     * Sends MSH (Message Service Handler) configuration.
-     *
-     * This function is part of the experimental NHN EDI v2/vNext API and may
-     * change or be removed without prior notice.
-     *
-     * @param postMshConfigurationRequest the MSH configuration to apply
-     * @return [Unit] on success (HTTP 204), or an [ErrorMessage] on failure
-     */
-    @ExperimentalEdiAdapterApi
-    override suspend fun postMshConfiguration(postMshConfigurationRequest: PostMshConfigurationRequest): Either<ErrorMessage, Unit> {
-        val url = "$ediAdapterUrl/api/v2/mshConfiguration"
-        val response = httpClient.post(url) {
-            contentType(ContentType.Application.Json)
-            setBody(postMshConfigurationRequest)
-        }.withLogging()
+    override fun close() {
+        httpClient.close()
+    }
 
-        return if (response.status == NoContent) {
-            Right(Unit)
-        } else {
-            Left(response.body())
+    private suspend fun collectNotifications(
+        herIds: List<Int>,
+        offset: Int?,
+        onNotification: suspend (Notification) -> Unit
+    ): Either<EdiAdapterError, Boolean> = either {
+        var finished = false
+        flow {
+            val session = openNotificationSession(herIds, offset)
+            finished = session.call.response.status == HttpStatusCode.NoContent
+            emitAll(session.notifications())
+        }
+            .catch { cause -> raise(streamError(cause)) }
+            .collect { onNotification(it) }
+        finished
+    }
+
+    private suspend fun openNotificationSession(
+        herIds: List<Int>,
+        offset: Int?
+    ): ClientSSESessionWithDeserialization {
+        log.debug { "Opening notification stream for ${herIds.size} her ids from offset $offset" }
+        return httpClient.serverSentEventsSession(
+            "$baseUrl/notifications/stream",
+            deserialize = { type, data ->
+                val serializer = json.serializersModule.serializer(type.kotlinType!!)
+                json.decodeFromString(serializer, data)
+            }
+        ) {
+            herIds.forEach { parameter("herIds", it) }
+            parameter("offset", offset)
+        }
+            .also { session ->
+                log.debug { "Notification stream response: ${session.call.response.status}" }
+            }
+    }
+
+    private fun ClientSSESessionWithDeserialization.notifications(): Flow<Notification> = incoming
+        .filter { it.event == "notification" }
+        .map { event ->
+            deserialize<Notification>(event.data)
+                ?: throw SerializationException("Missing notification data")
+        }
+        .onCompletion {
+            cancel()
+            log.debug { "Notification stream closed" }
+        }
+
+    private suspend fun streamError(cause: Throwable): EdiAdapterError {
+        val error = cause.nonFatalOrThrow()
+        val response = (error as? SSEClientException)?.response
+        log.debug { "Notification stream failed: ${error::class.simpleName}, HTTP status: ${response?.status}" }
+        val underlying = generateSequence(error) { (it as? SSEClientException)?.cause }
+            .last().nonFatalOrThrow()
+        return when {
+            response != null && !response.status.isSuccess() -> apiError(response)
+            underlying is SerializationException -> EdiAdapterError.Decoding(underlying)
+            underlying is IOException -> EdiAdapterError.Transport(underlying)
+            response != null -> EdiAdapterError.Decoding(error)
+            else -> throw underlying
         }
     }
 
-    /**
-     * Closes the underlying HTTP client and releases resources.
-     *
-     * Should be called when the client is no longer needed to free connections.
-     */
-    override fun close() = httpClient.close()
+    private fun shouldReconnect(error: EdiAdapterError): Boolean = when (error) {
+        is EdiAdapterError.Transport -> true
+        is EdiAdapterError.Api -> error.status in 500..599 || error.status == 408 || error.status == 429
+        is EdiAdapterError.Decoding -> false
+    }
 
-    private suspend inline fun <reified T> handleResponse(httpResponse: HttpResponse): Either<ErrorMessage, T> {
-        return if (httpResponse.status == HttpStatusCode.OK || httpResponse.status == HttpStatusCode.Created) {
-            Right(httpResponse.body())
-        } else {
-            Left(httpResponse.body())
+    private inline fun <reified T> HttpRequestBuilder.jsonBody(value: T) {
+        contentType(ContentType.Application.Json)
+        setBody(json.encodeToString(value))
+    }
+
+    private suspend inline fun <reified T> request(
+        method: HttpMethod,
+        path: String,
+        crossinline configure: HttpRequestBuilder.() -> Unit = {}
+    ): Either<EdiAdapterError, T> = either {
+        catch({
+            val response = httpClient.request("$baseUrl/$path") {
+                this.method = method
+                accept(ContentType.Application.Json)
+                configure()
+            }
+                .withLogging()
+            readResponse<T>(response)
+        }) { cause ->
+            raise(
+                when (cause) {
+                    is SerializationException -> EdiAdapterError.Decoding(cause)
+                    else -> EdiAdapterError.Transport(cause)
+                }
+            )
         }
+    }
+
+    private suspend inline fun <reified T> Raise<EdiAdapterError>.readResponse(
+        response: HttpResponse
+    ): T {
+        ensure(response.status.isSuccess()) { apiError(response) }
+        return when (T::class) {
+            Unit::class -> Unit as T
+            else -> json.decodeFromString<T>(response.bodyAsText())
+        }
+    }
+
+    private suspend fun apiError(response: HttpResponse): EdiAdapterError.Api {
+        val problem = Either.catch {
+            json.decodeFromString<MshApiProblemDetails>(response.bodyAsText())
+        }
+            .getOrNull()
+
+        return EdiAdapterError.Api(response.status.value, problem)
     }
 }
 
-suspend fun HttpResponse.withLogging(): HttpResponse {
-    val body = this.bodyAsText()
-    log.debug { "Response from ${request.method} ${request.url} is $status: $body" }
-    return this
+suspend fun HttpResponse.withLogging(): HttpResponse = apply {
+    if (log.isDebugEnabled()) {
+        val body = bodyAsText()
+        log.debug { "Response from ${request.method} ${request.url} is $status: $body" }
+    }
 }

@@ -4,671 +4,220 @@ import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.datatest.withData
-import io.kotest.matchers.booleans.shouldBeTrue
-import io.kotest.matchers.collections.shouldContainExactly
-import io.kotest.matchers.equality.shouldBeEqualUsingFields
-import io.kotest.matchers.equals.shouldBeEqual
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.string.shouldStartWith
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.HttpResponseData
-import io.ktor.http.ContentType.Application.Json
-import io.ktor.http.HttpHeaders.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.TextContent
 import io.ktor.http.fullPath
 import io.ktor.http.headersOf
-import io.ktor.serialization.JsonConvertException
-import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import no.nav.helsemelding.ediadapter.model.common.ErrorMessage
 import no.nav.helsemelding.ediadapter.model.common.GetBusinessDocumentResponse
-import no.nav.helsemelding.ediadapter.model.v1.AppRecStatus
-import no.nav.helsemelding.ediadapter.model.v1.ApprecInfo
-import no.nav.helsemelding.ediadapter.model.v1.DeliveryState
-import no.nav.helsemelding.ediadapter.model.v1.GetMessagesRequest
-import no.nav.helsemelding.ediadapter.model.v1.Message
-import no.nav.helsemelding.ediadapter.model.v1.Metadata
-import no.nav.helsemelding.ediadapter.model.v1.PostAppRecRequest
-import no.nav.helsemelding.ediadapter.model.v1.PostMessageRequest
-import no.nav.helsemelding.ediadapter.model.v1.StatusInfo
-import no.nav.helsemelding.ediadapter.model.v2.GetNoticesRequest
-import no.nav.helsemelding.ediadapter.model.v2.MshConfiguration
-import no.nav.helsemelding.ediadapter.model.v2.Notice
-import no.nav.helsemelding.ediadapter.model.v2.NoticeType.NEW_MESSAGE
-import no.nav.helsemelding.ediadapter.model.v2.PostMshConfigurationRequest
-import no.nav.helsemelding.ediadapter.model.v2.ReceiveNotificationChannel.API_POLLING
-import no.nav.helsemelding.ediadapter.model.v2.RejectMessageFilters
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlin.text.Charsets.UTF_8
-import kotlin.time.Clock
-import kotlin.time.ExperimentalTime
-import kotlin.time.Instant
+import no.nav.helsemelding.ediadapter.model.v3.AppRecStatus
+import no.nav.helsemelding.ediadapter.model.v3.GetMessageResponse
+import no.nav.helsemelding.ediadapter.model.v3.GetNotificationsResponse
+import no.nav.helsemelding.ediadapter.model.v3.GetStatusResponse
+import no.nav.helsemelding.ediadapter.model.v3.MarkAsDownloadedRequest
+import no.nav.helsemelding.ediadapter.model.v3.MshApiProblemDetails
+import no.nav.helsemelding.ediadapter.model.v3.MshConfiguration
+import no.nav.helsemelding.ediadapter.model.v3.Notification
+import no.nav.helsemelding.ediadapter.model.v3.NotificationType
+import no.nav.helsemelding.ediadapter.model.v3.PingResponse
+import no.nav.helsemelding.ediadapter.model.v3.PostAppRecRequest
+import no.nav.helsemelding.ediadapter.model.v3.PostApprecResponse
+import no.nav.helsemelding.ediadapter.model.v3.PostMessageRequest
+import no.nav.helsemelding.ediadapter.model.v3.PostMessageResponse
+import no.nav.helsemelding.ediadapter.model.v3.ReceiveNotificationChannel
+import no.nav.helsemelding.ediadapter.model.v3.SetMshConfigurationsRequest
+import java.io.IOException
 import kotlin.uuid.Uuid
-import kotlinx.serialization.json.Json as JsonUtil
 
-@OptIn(ExperimentalTime::class)
 class EdiAdapterClientSpec : StringSpec(
     {
+        val id = Uuid.random()
 
-        val errorMessage500 = ErrorMessage(
-            error = "Internal Server Error",
-            errorCode = 1000,
-            validationErrors = listOf("Example error"),
-            stackTrace = "[StackTrace]",
-            requestId = Uuid.random().toString()
-        )
-
-        val errorMessage404 = ErrorMessage(
-            error = "Not Found",
-            errorCode = 1000,
-            validationErrors = listOf("Example error"),
-            stackTrace = "[StackTrace]",
-            requestId = Uuid.random().toString()
-        )
-
-        "getApprecInfo returns apprecInfos and no messageError if response is 200" {
-            val apprecInfosStub = listOf(
-                ApprecInfo(
-                    receiverHerId = 1,
-                    appRecStatus = AppRecStatus.OK,
-                    appRecErrorList = emptyList()
-                )
-            )
-            val uuid = Uuid.random()
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Get
-                    request.url.fullPath shouldBeEqual "/api/v1/messages/$uuid/apprec"
-
-                    respond(
-                        content = JsonUtil.encodeToString(apprecInfosStub),
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.OK
-                    )
-                }
-            }
-
-            val apprecInfos = ediClient.getApprecInfo(uuid).shouldBeRight()
-            apprecInfos shouldContainExactly apprecInfosStub
-        }
-
-        "getApprecInfo returns messageError and no apprecInfos if response is 404" {
-            val uuid = Uuid.random()
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Get
-                    request.url.fullPath shouldBeEqual "/api/v1/messages/$uuid/apprec"
-
-                    respond(
-                        content = JsonUtil.encodeToString(errorMessage404),
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.NotFound
-                    )
-                }
-            }
-
-            val errorMessage = ediClient.getApprecInfo(uuid).shouldBeLeft()
-            errorMessage shouldBeEqualUsingFields errorMessage404
-        }
-
-        "getMessages returns messages and no messageError if response is 200" {
-            val messagesStub = listOf(Message(receiverHerId = 1))
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Get
-                    request.url.fullPath shouldStartWith "/api/v1/messages?receiverHerIds=1"
-
-                    respond(
-                        content = JsonUtil.encodeToString(messagesStub),
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.OK
-                    )
-                }
-            }
-
-            val getMessagesRequest = GetMessagesRequest(receiverHerIds = listOf(1))
-            val messages = ediClient.getMessages(getMessagesRequest).shouldBeRight()
-            messages shouldContainExactly messagesStub
-        }
-
-        "getMessages returns messageError and no messages if response is 500" {
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Get
-                    request.url.fullPath shouldStartWith "/api/v1/messages?receiverHerIds=1"
-
-                    respond(
-                        content = JsonUtil.encodeToString(errorMessage500),
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.InternalServerError
-                    )
-                }
-            }
-
-            val getMessagesRequest = GetMessagesRequest(receiverHerIds = listOf(1))
-            val errorMessage = ediClient.getMessages(getMessagesRequest).shouldBeLeft()
-            errorMessage shouldBeEqualUsingFields errorMessage500
-        }
-
-        @OptIn(ExperimentalEdiAdapterApi::class)
-        "getNotices returns message notices and no messageError if response is 200" {
-            val notice = listOf(
-                Notice(
-                    noticeType = NEW_MESSAGE,
-                    receiverHerId = 1
-                )
-            )
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Get
-                    request.url.fullPath shouldStartWith "/api/v2/messages/notices?receiverHerIds=1"
-
-                    respond(
-                        content = JsonUtil.encodeToString(notice),
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.OK
-                    )
-                }
-            }
-
-            val getNoticesRequest = GetNoticesRequest(receiverHerIds = listOf(1))
-            val messages = ediClient.getNotices(getNoticesRequest).shouldBeRight()
-            messages shouldContainExactly notice
-        }
-
-        @OptIn(ExperimentalEdiAdapterApi::class)
-        "getNotices returns messageError and no message notices if response is 500" {
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Get
-                    request.url.fullPath shouldStartWith "/api/v2/messages/notices?receiverHerIds=1"
-
-                    respond(
-                        content = JsonUtil.encodeToString(errorMessage500),
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.InternalServerError
-                    )
-                }
-            }
-
-            val getNoticesRequest = GetNoticesRequest(receiverHerIds = listOf(1))
-            val errorMessage = ediClient.getNotices(getNoticesRequest).shouldBeLeft()
-            errorMessage shouldBeEqualUsingFields errorMessage500
-        }
-
-        "postMessage returns metadata and no messageError if response is 201" {
-            val metadataStub = Metadata(
-                id = Uuid.random(),
-                location = "https://example.com/messages/1"
-            )
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Post
-                    request.url.fullPath shouldBe "/api/v1/messages"
-
-                    respond(
-                        content = JsonUtil.encodeToString(metadataStub),
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.Created
-                    )
-                }
-            }
-
-            val request = PostMessageRequest(
-                businessDocument = base64EncodedDocument(),
-                contentType = "application/xml",
-                contentTransferEncoding = "base64"
-            )
-            val metadata = ediClient.postMessage(request).shouldBeRight()
-            metadata shouldBeEqualUsingFields metadataStub
-        }
-
-        "postMessage returns messageError and no metadata if response is 500" {
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Post
-                    request.url.fullPath shouldBe "/api/v1/messages"
-
-                    respond(
-                        content = JsonUtil.encodeToString(errorMessage500),
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.InternalServerError
-                    )
-                }
-            }
-
-            val postMessageRequest = PostMessageRequest(
-                businessDocument = base64EncodedDocument(),
-                contentType = "application/xml",
-                contentTransferEncoding = "base64"
-            )
-            val errorMessage = ediClient.postMessage(postMessageRequest).shouldBeLeft()
-            errorMessage shouldBeEqualUsingFields errorMessage500
-        }
-
-        "getMessage returns message and no messageError if response is 200" {
-            val uuid = Uuid.random()
-            val messageStub = Message(
-                id = uuid,
-                contentType = "application/xml",
-                receiverHerId = 42,
-                senderHerId = 1111,
-                businessDocumentId = Uuid.random().toString(),
-                businessDocumentGenDate = Clock.System.now(),
-                isAppRec = false,
-                sourceSystem = "Source system"
-            )
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Get
-                    request.url.fullPath shouldBe "/api/v1/messages/$uuid"
-
-                    respond(
-                        content = JsonUtil.encodeToString(messageStub),
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.OK
-                    )
-                }
-            }
-
-            val message = ediClient.getMessage(uuid).shouldBeRight()
-            message shouldBeEqualUsingFields messageStub
-        }
-
-        withData(
-            nameFn = { "Deserializing businessDocumentGenDate ${it.first} should convert ${it.second.first()} to ${it.second.last()}" },
-            "without timezone" to listOf("2026-08-27T05:41:33.579185300", "2026-08-27T03:41:33.579185300Z"),
-            "as UTC time" to listOf("2026-08-27T05:41:33.579185300Z", "2026-08-27T05:41:33.579185300Z"),
-            "as UTC time with offset" to listOf(
-                "2026-08-27T05:41:33.579185300+02:00",
-                "2026-08-27T03:41:33.579185300Z"
-            )
-        ) {
-            val (dateTime, expectedDateTimeStr) = it.second
-            val uuid = Uuid.random()
-            val expectedDateTime = Instant.parse(expectedDateTimeStr)
-            val messageJson = JsonUtil.parseToJsonElement(
-                """
-                {
-                    "id": "$uuid",
-                    "contentType": "application/xml",
-                    "receiverHerId": 42,
-                    "senderHerId": 1111,
-                    "businessDocumentId": "49133a4c-5a12-44a2-aed5-03fb6b0e4346",
-                    "businessDocumentGenDate": "$dateTime",
-                    "isAppRec": false,
-                    "sourceSystem": "Source system"
-                }
-                """.trimIndent()
-            ).toString()
-
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Get
-                    request.url.fullPath shouldBe "/api/v1/messages/$uuid"
-
-                    respond(
-                        content = messageJson,
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.OK
-                    )
-                }
-            }
-
-            val message = ediClient.getMessage(uuid).shouldBeRight()
-            message.businessDocumentGenDate shouldBe expectedDateTime
-        }
-
-        withData(
-            nameFn = { "Deserializing invalid dateTime($it) for businessDocumentGenDate should return JsonConvertException" },
-            "2026-08-27T05:41:33.579185300-+02:00",
-            "2026-08-T05:41:33.579185300+02:00",
-            "2026-08-27T05:41:.579185300Z",
-            "2026-08-27T05:41:33.+02:00"
-        ) { dateTime ->
-            val uuid = Uuid.random()
-            val messageJson = JsonUtil.parseToJsonElement(
-                """
-                {
-                    "id": "$uuid",
-                    "contentType": "application/xml",
-                    "receiverHerId": 42,
-                    "senderHerId": 1111,
-                    "businessDocumentId": "49133a4c-5a12-44a2-aed5-03fb6b0e4346",
-                    "businessDocumentGenDate": "$dateTime",
-                    "isAppRec": false,
-                    "sourceSystem": "Source system"
-                }
-                """.trimIndent()
-            ).toString()
-
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Get
-                    request.url.fullPath shouldBe "/api/v1/messages/$uuid"
-
-                    respond(
-                        content = messageJson,
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.OK
-                    )
-                }
-            }
-
-            shouldThrow<JsonConvertException> {
-                ediClient.getMessage(uuid).shouldBeRight()
-            }
-        }
-
-        "getMessage returns messageError and no message if response is 404" {
-            val uuid = Uuid.random()
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Get
-                    request.url.fullPath shouldBe "/api/v1/messages/$uuid"
-
-                    respond(
-                        content = JsonUtil.encodeToString(errorMessage404),
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.NotFound
-                    )
-                }
-            }
-
-            val errorMessage = ediClient.getMessage(uuid).shouldBeLeft()
-            errorMessage shouldBeEqualUsingFields errorMessage404
-        }
-
-        "getBusinessDocument returns business document and no messageError if response is 200" {
-            val businessDocumentResponseStub = GetBusinessDocumentResponse(
-                businessDocument = base64EncodedDocument(),
-                contentType = "application/xml",
-                contentTransferEncoding = "base64"
-            )
-            val uuid = Uuid.random()
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Get
-                    request.url.fullPath shouldBeEqual "/api/v1/messages/$uuid/document"
-
-                    respond(
-                        content = JsonUtil.encodeToString(businessDocumentResponseStub),
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.OK
-                    )
-                }
-            }
-
-            val businessDocumentResponse = ediClient.getBusinessDocument(uuid).shouldBeRight()
-            businessDocumentResponse shouldBeEqualUsingFields businessDocumentResponseStub
-        }
-
-        "getBusinessDocument returns messageError and no business document if response is 404" {
-            val uuid = Uuid.random()
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Get
-                    request.url.fullPath shouldBeEqual "/api/v1/messages/$uuid/document"
-
-                    respond(
-                        content = JsonUtil.encodeToString(errorMessage404),
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.NotFound
-                    )
-                }
-            }
-
-            val errorMessage = ediClient.getBusinessDocument(uuid).shouldBeLeft()
-            errorMessage shouldBeEqualUsingFields errorMessage404
-        }
-
-        "getMessageStatus returns statusInfos and no messageError if response is 200" {
-            val statusInfosStub = listOf(
-                StatusInfo(
-                    receiverHerId = 1,
-                    transportDeliveryState = DeliveryState.ACKNOWLEDGED,
-                    sent = true
-                )
-            )
-            val uuid = Uuid.random()
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Get
-                    request.url.fullPath shouldBeEqual "/api/v1/messages/$uuid/status"
-
-                    respond(
-                        content = JsonUtil.encodeToString(statusInfosStub),
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.OK
-                    )
-                }
-            }
-
-            val statusInfos = ediClient.getMessageStatus(uuid).shouldBeRight()
-            statusInfos shouldContainExactly statusInfosStub
-        }
-
-        "getMessageStatus returns messageError and no statusInfos if response is 404" {
-            val uuid = Uuid.random()
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Get
-                    request.url.fullPath shouldBeEqual "/api/v1/messages/$uuid/status"
-
-                    respond(
-                        content = JsonUtil.encodeToString(errorMessage404),
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.NotFound
-                    )
-                }
-            }
-
-            val errorMessage = ediClient.getMessageStatus(uuid).shouldBeLeft()
-            errorMessage shouldBeEqualUsingFields errorMessage404
-        }
-
-        "postApprec returns metadata and no messageError if response is 201" {
-            val metadataStub = Metadata(
-                id = Uuid.random(),
-                location = "https://example.com/messages/1"
-            )
-            val uuid = Uuid.random()
-            val apprecSenderHerId = 100
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Post
-                    request.url.fullPath shouldBe "/api/v1/messages/$uuid/apprec/$apprecSenderHerId"
-
-                    respond(
-                        content = JsonUtil.encodeToString(metadataStub),
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.Created
-                    )
-                }
-            }
-
-            val apprecRequest = PostAppRecRequest(
-                appRecStatus = AppRecStatus.OK
-            )
-            val metadata = ediClient.postApprec(uuid, apprecSenderHerId, apprecRequest).shouldBeRight()
-            metadata shouldBeEqualUsingFields metadataStub
-        }
-
-        "postApprec returns messageError and no metadata if response is 500" {
-            val uuid = Uuid.random()
-            val apprecSenderHerId = 100
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Post
-                    request.url.fullPath shouldBe "/api/v1/messages/$uuid/apprec/$apprecSenderHerId"
-
-                    respond(
-                        content = JsonUtil.encodeToString(errorMessage500),
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.InternalServerError
-                    )
-                }
-            }
-
-            val apprecRequest = PostAppRecRequest(
-                appRecStatus = AppRecStatus.OK
-            )
-            val errorMessage = ediClient.postApprec(uuid, apprecSenderHerId, apprecRequest).shouldBeLeft()
-            errorMessage shouldBeEqualUsingFields errorMessage500
-        }
-
-        "markMessageAsRead returns true and no messageError if response is 204" {
-            val uuid = Uuid.random()
-            val herId = 1
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Put
-                    request.url.fullPath shouldBeEqual "/api/v1/messages/$uuid/read/$herId"
-
-                    respond(
-                        content = JsonUtil.encodeToString(true),
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.NoContent
-                    )
-                }
-            }
-
-            val isMessagesMarkedAsRead = ediClient.markMessageAsRead(uuid, herId).shouldBeRight()
-            isMessagesMarkedAsRead.shouldBeTrue()
-        }
-
-        "markMessageAsRead returns messageError and no boolean value if response is 404" {
-            val uuid = Uuid.random()
-            val herId = 1
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Put
-                    request.url.fullPath shouldBeEqual "/api/v1/messages/$uuid/read/$herId"
-
-                    respond(
-                        content = JsonUtil.encodeToString(errorMessage404),
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.NotFound
-                    )
-                }
-            }
-
-            val errorMessage = ediClient.markMessageAsRead(uuid, herId).shouldBeLeft()
-            errorMessage shouldBeEqualUsingFields errorMessage404
-        }
-
-        "throws cancellationException if attempting to use ediClientAdapter after calling close()" {
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    respond(
-                        content = JsonUtil.encodeToString(errorMessage404),
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.NotFound
-                    )
-                }
-            }
-
-            ediClient.close()
-
-            shouldThrow<CancellationException> {
-                ediClient.getMessage(Uuid.random())
-            }
-        }
-
-        @OptIn(ExperimentalEdiAdapterApi::class)
-        "postMshConfiguration returns unit and no messageError if response is 204" {
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Post
-                    request.url.fullPath shouldBe "/api/v2/mshConfiguration"
-
-                    respond(
-                        content = "",
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.NoContent
-                    )
-                }
-            }
-
-            val request = PostMshConfigurationRequest(
+        "getNotifications sends her ids, offset and notifications to fetch" {
+            val expected = GetNotificationsResponse(
                 listOf(
-                    MshConfiguration(
-                        herId = 1,
-                        receiveNotificationChannel = API_POLLING,
-                        receiveRefusedMessageNotices = false,
-                        rejectMessageFilters = RejectMessageFilters(
-                            messageFunction = listOf("string"),
-                            xmlNamespace = listOf("string")
-                        )
+                    Notification(
+                        type = NotificationType.NEW_MESSAGE,
+                        notificationReceiverHerId = 123,
+                        offset = 2147483647
                     )
                 )
             )
-            val unit = ediClient.postMshConfiguration(request).shouldBeRight()
-            unit shouldBe Unit
+            withClient({ request ->
+                request.method shouldBe HttpMethod.Get
+                request.url.fullPath shouldBe "/api/v3/notifications?herIds=123&herIds=456&offset=2147483646&notificationsToFetch=1000"
+                respondJson(expected)
+            }) { client ->
+                client.getNotifications(listOf(123, 456), 2147483646, 1000).shouldBeRight(expected)
+            }
         }
 
-        @OptIn(ExperimentalEdiAdapterApi::class)
-        "postMshConfiguration returns messageError if response is 500" {
-            val ediClient = ediAdapterClient {
-                fakeScopedAuthHttpClient { request ->
-                    request.method shouldBe HttpMethod.Post
-                    request.url.fullPath shouldBe "/api/v2/mshConfiguration"
-
-                    respond(
-                        content = JsonUtil.encodeToString(errorMessage500),
-                        headers = headersOf(ContentType, Json.toString()),
-                        status = HttpStatusCode.InternalServerError
-                    )
-                }
+        "getNotifications omits the default page size" {
+            withClient({ request ->
+                request.url.fullPath shouldBe "/api/v3/notifications?herIds=123&offset=0"
+                respondJson(GetNotificationsResponse(emptyList()))
+            }) { client ->
+                client.getNotifications(listOf(123), 0).shouldBeRight(GetNotificationsResponse(emptyList()))
             }
+        }
 
-            val request = PostMshConfigurationRequest(
-                listOf(
-                    MshConfiguration(
-                        herId = 1,
-                        receiveNotificationChannel = API_POLLING,
-                        receiveRefusedMessageNotices = false
-                    )
+        "postMessage sends the V3 payload and decodes an accepted response" {
+            val body = PostMessageRequest("PHhtbC8+", 123, listOf(456), "application/xml", "base64", "DIALOG_HELSEFAGLIG", "app", "1.0")
+            withClient({ request ->
+                request.method shouldBe HttpMethod.Post
+                request.url.fullPath shouldBe "/api/v3/messages"
+                request.body.shouldBeInstanceOf<TextContent>().contentType.toString() shouldBe "application/json"
+                Json.decodeFromString<PostMessageRequest>((request.body as TextContent).text) shouldBe body
+                respondJson(PostMessageResponse(id.toString()), HttpStatusCode.Accepted)
+            }) { client ->
+                client.postMessage(body).shouldBeRight(PostMessageResponse(id.toString()))
+            }
+        }
+
+        "getMessage returns V3 metadata" {
+            val expected = GetMessageResponse(id.toString(), senderHerId = 123, receiverHerIds = listOf(456))
+            withClient({ request ->
+                request.method shouldBe HttpMethod.Get
+                request.url.fullPath shouldBe "/api/v3/messages/$id"
+                respondJson(expected)
+            }) { client -> client.getMessage(id).shouldBeRight(expected) }
+        }
+
+        "getBusinessDocument returns the encoded document" {
+            val expected = GetBusinessDocumentResponse("PHhtbC8+", "application/xml", "base64")
+            withClient({ request ->
+                request.method shouldBe HttpMethod.Get
+                request.url.fullPath shouldBe "/api/v3/messages/$id/document"
+                respondJson(expected)
+            }) { client -> client.getBusinessDocument(id).shouldBeRight(expected) }
+        }
+
+        "getMessageStatus returns V3 status information" {
+            val expected = GetStatusResponse(emptyList())
+            withClient({ request ->
+                request.method shouldBe HttpMethod.Get
+                request.url.fullPath shouldBe "/api/v3/messages/$id/status"
+                respondJson(expected)
+            }) { client -> client.getMessageStatus(id).shouldBeRight(expected) }
+        }
+
+        "postApprec sends the sender in the V3 payload" {
+            val body = PostAppRecRequest(123, AppRecStatus.OK, applicationName = "app", applicationVersion = "1.0")
+            withClient({ request ->
+                request.method shouldBe HttpMethod.Post
+                request.url.fullPath shouldBe "/api/v3/messages/$id/apprec"
+                Json.decodeFromString<PostAppRecRequest>((request.body as TextContent).text) shouldBe body
+                respondJson(PostApprecResponse(id.toString()), HttpStatusCode.Accepted)
+            }) { client -> client.postApprec(id, body).shouldBeRight(PostApprecResponse(id.toString())) }
+        }
+
+        "markMessageAsDownloaded sends the receiver and accepts an empty response" {
+            val body = MarkAsDownloadedRequest(123)
+            withClient({ request ->
+                request.method shouldBe HttpMethod.Put
+                request.url.fullPath shouldBe "/api/v3/messages/$id/downloaded"
+                Json.decodeFromString<MarkAsDownloadedRequest>((request.body as TextContent).text) shouldBe body
+                respond("", HttpStatusCode.NoContent)
+            }) { client -> client.markMessageAsDownloaded(id, body).shouldBeRight(Unit) }
+        }
+
+        "setMshConfigurations sends V3 configurations using PUT" {
+            val body = SetMshConfigurationsRequest(listOf(MshConfiguration(123, ReceiveNotificationChannel.API)))
+            withClient({ request ->
+                request.method shouldBe HttpMethod.Put
+                request.url.fullPath shouldBe "/api/v3/mshconfigurations"
+                Json.decodeFromString<SetMshConfigurationsRequest>((request.body as TextContent).text) shouldBe body
+                respond("", HttpStatusCode.NoContent)
+            }) { client -> client.setMshConfigurations(body).shouldBeRight(Unit) }
+        }
+
+        "deleteMshConfigurations sends repeated her ids" {
+            withClient({ request ->
+                request.method shouldBe HttpMethod.Delete
+                request.url.fullPath shouldBe "/api/v3/mshconfigurations?herIds=123&herIds=456"
+                respond("", HttpStatusCode.NoContent)
+            }) { client -> client.deleteMshConfigurations(listOf(123, 456)).shouldBeRight(Unit) }
+        }
+
+        "ping decodes the response and ignores additional fields" {
+            withClient({ request ->
+                request.method shouldBe HttpMethod.Get
+                request.url.fullPath shouldBe "/api/v3/ping"
+                respond(
+                    """
+                    {
+                      "response": "pong",
+                      "futureField": true
+                    }
+                    """.trimIndent(),
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
                 )
-            )
-            val errorMessage = ediClient.postMshConfiguration(request).shouldBeLeft()
-            errorMessage shouldBeEqualUsingFields errorMessage500
+            }) { client -> client.ping().shouldBeRight(PingResponse("pong")) }
+        }
+
+        "HTTP failures retain status and problem details" {
+            val problem = MshApiProblemDetails(status = 400, title = "Bad Request", validationErrors = listOf("Invalid her id"))
+            withClient({ respondJson(problem, HttpStatusCode.BadRequest) }) { client ->
+                client.ping().shouldBeLeft(EdiAdapterError.Api(400, problem))
+            }
+        }
+
+        "non-JSON HTTP failures retain the status" {
+            withClient({ respond("Bad gateway", HttpStatusCode.BadGateway) }) { client ->
+                client.ping().shouldBeLeft(EdiAdapterError.Api(502))
+            }
+        }
+
+        "invalid successful responses return a decoding error" {
+            withClient({ respond("not JSON") }) { client ->
+                client.ping().shouldBeLeft().shouldBeInstanceOf<EdiAdapterError.Decoding>()
+            }
+        }
+
+        "transport failures are returned without retrying writes" {
+            val failure = IOException("Connection lost")
+            var requests = 0
+            withClient({ requests++; throw failure }) { client ->
+                val error = client.markMessageAsDownloaded(id, MarkAsDownloadedRequest(123)).shouldBeLeft()
+                    .shouldBeInstanceOf<EdiAdapterError.Transport>()
+                error.cause.shouldBeInstanceOf<IOException>().message shouldBe failure.message
+                requests shouldBe 1
+            }
+        }
+
+        "cancellation propagates" {
+            val failure = CancellationException("Cancelled")
+            withClient({ throw failure }) { client ->
+                shouldThrow<CancellationException> { client.ping() }.message shouldBe failure.message
+            }
         }
     }
 )
 
-private fun ediAdapterClient(httpClient: () -> HttpClient) = HttpEdiAdapterClient(
-    ediAdapterUrl = "http://localhost",
-    clientProvider = httpClient
-)
-
-private fun fakeScopedAuthHttpClient(
-    handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData
-) = HttpClient(MockEngine) {
-    engine { addHandler(handler) }
-    install(ContentNegotiation) {
-        json(
-            Json {
-                ignoreUnknownKeys = true
-                encodeDefaults = true
-            }
-        )
-    }
+private suspend fun withClient(
+    handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
+    block: suspend (EdiAdapterClient) -> Unit
+) {
+    HttpEdiAdapterClient(
+        clientProvider = { HttpClient(MockEngine) { engine { addHandler(handler) }; expectSuccess = false } },
+        ediAdapterUrl = "http://localhost/"
+    )
+        .use { block(it) }
 }
 
-@OptIn(ExperimentalEncodingApi::class)
-fun base64EncodedDocument(): String =
-    Base64.encode(
-        """"<MsgHead><Body>hello world</Body></MsgHead>""""
-            .trimIndent()
-            .toByteArray(UTF_8)
-    )
+private inline fun <reified T> MockRequestHandleScope.respondJson(
+    body: T,
+    status: HttpStatusCode = HttpStatusCode.OK
+): HttpResponseData = respond(Json.encodeToString(body), status, headersOf(HttpHeaders.ContentType, "application/json"))
