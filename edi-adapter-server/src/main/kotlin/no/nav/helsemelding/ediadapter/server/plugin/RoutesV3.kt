@@ -23,9 +23,31 @@ import no.nav.helsemelding.ediadapter.model.v3.SetMshConfigurationsRequest
 import no.nav.helsemelding.ediadapter.server.herIds
 import no.nav.helsemelding.ediadapter.server.messageId
 import no.nav.helsemelding.ediadapter.server.notificationParameters
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.DELETE_MSH_CONFIGURATIONS
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.GET_DOCUMENT
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.GET_MESSAGE
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.GET_NOTIFICATIONS
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.GET_STATUS
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.MARK_DOWNLOADED
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.PING
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.POST_APPREC
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.POST_MESSAGE
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.SET_MSH_CONFIGURATIONS
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.STREAM_NOTIFICATIONS
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.deleteMshConfigurationsDocs
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.getDocumentDocs
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.getMessageDocs
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.getNotificationsDocs
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.getStatusDocs
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.markDownloadedDocs
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.pingDocs
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.postApprecDocs
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.postMessageDocs
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.setMshConfigurationsDocs
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.streamNotificationsDocs
 
 internal fun Route.v3Routes(ediClient: HttpClient) {
-    get("/notifications", MessagesApiV3.getNotificationsDocs) {
+    get(GET_NOTIFICATIONS, getNotificationsDocs) {
         handleV3Request(
             {
                 val params = notificationParameters(call)
@@ -34,7 +56,7 @@ internal fun Route.v3Routes(ediClient: HttpClient) {
         )
     }
 
-    get("/notifications/stream", MessagesApiV3.streamNotificationsDocs) {
+    get(STREAM_NOTIFICATIONS, streamNotificationsDocs) {
         handleV3Stream(
             {
                 val params = notificationParameters(call, stream = true)
@@ -46,7 +68,7 @@ internal fun Route.v3Routes(ediClient: HttpClient) {
         )
     }
 
-    post("/messages", MessagesApiV3.postMessageDocs) {
+    post(POST_MESSAGE, postMessageDocs) {
         handleV3Request(
             {
                 val message = call.receive<PostMessageRequest>()
@@ -58,7 +80,7 @@ internal fun Route.v3Routes(ediClient: HttpClient) {
         )
     }
 
-    get("/messages/{messageId}", MessagesApiV3.getMessageDocs) {
+    get(GET_MESSAGE, getMessageDocs) {
         handleV3Request(
             {
                 val messageId = messageId(call)
@@ -67,7 +89,7 @@ internal fun Route.v3Routes(ediClient: HttpClient) {
         )
     }
 
-    get("/messages/{messageId}/document", MessagesApiV3.getDocumentDocs) {
+    get(GET_DOCUMENT, getDocumentDocs) {
         handleV3Request(
             {
                 val messageId = messageId(call)
@@ -76,7 +98,7 @@ internal fun Route.v3Routes(ediClient: HttpClient) {
         )
     }
 
-    get("/messages/{messageId}/status", MessagesApiV3.getStatusDocs) {
+    get(GET_STATUS, getStatusDocs) {
         handleV3Request(
             {
                 val messageId = messageId(call)
@@ -85,7 +107,7 @@ internal fun Route.v3Routes(ediClient: HttpClient) {
         )
     }
 
-    post("/messages/{messageId}/apprec", MessagesApiV3.postApprecDocs) {
+    post(POST_APPREC, postApprecDocs) {
         handleV3Request(
             {
                 val apprec = call.receive<PostAppRecRequest>()
@@ -98,7 +120,7 @@ internal fun Route.v3Routes(ediClient: HttpClient) {
         )
     }
 
-    put("/messages/{messageId}/downloaded", MessagesApiV3.markDownloadedDocs) {
+    put(MARK_DOWNLOADED, markDownloadedDocs) {
         handleV3Request(
             {
                 val downloaded = call.receive<MarkAsDownloadedRequest>()
@@ -111,7 +133,7 @@ internal fun Route.v3Routes(ediClient: HttpClient) {
         )
     }
 
-    put("/mshconfigurations", MessagesApiV3.setMshConfigurationsDocs) {
+    put(SET_MSH_CONFIGURATIONS, setMshConfigurationsDocs) {
         handleV3Request(
             {
                 val configurations = call.receive<SetMshConfigurationsRequest>()
@@ -123,7 +145,7 @@ internal fun Route.v3Routes(ediClient: HttpClient) {
         )
     }
 
-    delete("/mshconfigurations", MessagesApiV3.deleteMshConfigurationsDocs) {
+    delete(DELETE_MSH_CONFIGURATIONS, deleteMshConfigurationsDocs) {
         handleV3Request(
             {
                 val herIds = herIds(call)
@@ -132,7 +154,7 @@ internal fun Route.v3Routes(ediClient: HttpClient) {
         )
     }
 
-    get("/ping", MessagesApiV3.pingDocs) {
+    get(PING, pingDocs) {
         handleV3Request(
             { ediClient.get("ping") }
         )
