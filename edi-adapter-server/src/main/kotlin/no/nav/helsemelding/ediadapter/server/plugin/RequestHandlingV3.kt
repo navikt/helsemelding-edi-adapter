@@ -61,11 +61,9 @@ private suspend fun ApplicationCall.respondV3(
     response: HttpResponse,
     transform: suspend (HttpResponse) -> String = { it.bodyAsText() }
 ) {
-    response.headers[HttpHeaders.Location]?.let { this.response.headers.append(HttpHeaders.Location, it) }
-    if (response.status == HttpStatusCode.NoContent) {
-        respond(response.status)
-    } else {
-        respondText(
+    when (response.status) {
+        HttpStatusCode.NoContent -> respond(response.status)
+        else -> respondText(
             text = transform(response),
             contentType = response.contentType() ?: Json,
             status = response.status

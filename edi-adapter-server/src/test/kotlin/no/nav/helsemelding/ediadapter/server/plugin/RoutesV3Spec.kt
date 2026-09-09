@@ -15,7 +15,6 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.ContentType.Application.Json
 import io.ktor.http.HttpHeaders.Accept
-import io.ktor.http.HttpHeaders.Location
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode.Companion.Accepted
 import io.ktor.http.HttpStatusCode.Companion.BadRequest
@@ -471,7 +470,6 @@ class RoutesV3Spec : StringSpec(
                 }
             }"""
             val result = """{"id":"$V3_MESSAGE_ID"}"""
-            val location = "https://nhn.example/messages/$V3_MESSAGE_ID"
 
             val ediClientV3 = fakeEdiClient { request ->
                 request.url.fullPath shouldBe "/messages"
@@ -482,7 +480,7 @@ class RoutesV3Spec : StringSpec(
                 respond(
                     result,
                     Accepted,
-                    headersOf(ContentTypeHeader to listOf("application/json"), Location to listOf(location))
+                    jsonHeaders
                 )
             }
 
@@ -496,7 +494,6 @@ class RoutesV3Spec : StringSpec(
 
                 response.status shouldBe Accepted
                 response.bodyAsText() shouldBe result
-                response.headers[Location] shouldBe location
             }
         }
 
@@ -530,7 +527,6 @@ class RoutesV3Spec : StringSpec(
                 }
             }"""
             val result = """{"id":"$V3_MESSAGE_ID"}"""
-            val location = "https://nhn.example/messages/$V3_MESSAGE_ID"
 
             val ediClientV3 = fakeEdiClient { request ->
                 request.url.fullPath shouldBe "/messages/$V3_MESSAGE_ID/apprec"
@@ -541,7 +537,7 @@ class RoutesV3Spec : StringSpec(
                 respond(
                     result,
                     Accepted,
-                    headersOf(ContentTypeHeader to listOf("application/json"), Location to listOf(location))
+                    jsonHeaders
                 )
             }
 
@@ -555,14 +551,12 @@ class RoutesV3Spec : StringSpec(
 
                 response.status shouldBe Accepted
                 response.bodyAsText() shouldBe result
-                response.headers[Location] shouldBe location
             }
         }
 
         "PUT /messages/{id}/downloaded forwards request body and returns 204 from EDI response" {
             val payload = """{"receiverHerId":42}"""
             val result = ""
-            val location = "https://nhn.example/messages/$V3_MESSAGE_ID"
 
             val ediClientV3 = fakeEdiClient { request ->
                 request.url.fullPath shouldBe "/messages/$V3_MESSAGE_ID/downloaded"
@@ -573,7 +567,7 @@ class RoutesV3Spec : StringSpec(
                 respond(
                     result,
                     NoContent,
-                    headersOf(ContentTypeHeader to listOf("application/json"), Location to listOf(location))
+                    jsonHeaders
                 )
             }
 
@@ -587,7 +581,6 @@ class RoutesV3Spec : StringSpec(
 
                 response.status shouldBe NoContent
                 response.bodyAsText() shouldBe result
-                response.headers[Location] shouldBe location
             }
         }
 
@@ -607,7 +600,6 @@ class RoutesV3Spec : StringSpec(
                 ]
             }"""
             val result = ""
-            val location = "https://nhn.example/messages/$V3_MESSAGE_ID"
 
             val ediClientV3 = fakeEdiClient { request ->
                 request.url.fullPath shouldBe "/mshconfigurations"
@@ -618,7 +610,7 @@ class RoutesV3Spec : StringSpec(
                 respond(
                     result,
                     NoContent,
-                    headersOf(ContentTypeHeader to listOf("application/json"), Location to listOf(location))
+                    jsonHeaders
                 )
             }
 
@@ -632,7 +624,6 @@ class RoutesV3Spec : StringSpec(
 
                 response.status shouldBe NoContent
                 response.bodyAsText() shouldBe result
-                response.headers[Location] shouldBe location
             }
         }
 

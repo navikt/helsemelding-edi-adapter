@@ -649,8 +649,6 @@ object MessagesApiV3 {
                         value = PostApprecResponse(id = "68e60a2b-5990-408c-b99b-089d8657d6ed")
                     }
                 }
-
-                header<String>("Location") { description = "Location supplied by NHN, when present." }
             }
 
             BadRequest to {
