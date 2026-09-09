@@ -46,19 +46,19 @@ Routes are versioned under `/api/v1`, `/api/v2`, and `/api/v3`. Their upstream `
 
 ### v3
 
-| Method | Path                                      | Description                                      | Calls external NHN endpoint            |
-|--------|-------------------------------------------|--------------------------------------------------|----------------------------------------|
-| GET    | `/api/v3/notifications`                   | Fetch notifications for given her ids and offset | `GET /notifications`                   |
-| GET    | `/api/v3/notifications/stream`            | Stream notifications using SSE                   | `GET /notifications/stream` (SSE)      |
-| POST   | `/api/v3/messages`                        | Send a new message                               | `POST /messages`                       |
-| GET    | `/api/v3/messages/{messageId}`            | Get message metadata                             | `GET /messages/{id}`                   |
-| GET    | `/api/v3/messages/{messageId}/document`   | Download the message payload                     | `GET /messages/{id}/business-document` |
-| GET    | `/api/v3/messages/{messageId}/status`     | Get delivery and application receipt status      | `GET /messages/{id}/status`            |
-| POST   | `/api/v3/messages/{messageId}/apprec`     | Send an application receipt                      | `POST /messages/{id}/apprec`           |
-| PUT    | `/api/v3/messages/{messageId}/downloaded` | Mark a message as downloaded for a recipient     | `PUT /messages/{id}/downloaded`        |
-| PUT    | `/api/v3/mshconfigurations`               | Create or update MSH configurations              | `PUT /mshconfigurations`               |
-| DELETE | `/api/v3/mshconfigurations`               | Delete MSH configurations for given her ids      | `DELETE /mshconfigurations`            |
-| GET    | `/api/v3/ping`                            | Test the connection to NHN                       | `GET /ping`                            |
+| Method | Path                                      | Description                                          | Calls external NHN endpoint            |
+|--------|-------------------------------------------|------------------------------------------------------|----------------------------------------|
+| GET    | `/api/v3/notifications`                   | Fetch notifications for given her ids and offset     | `GET /notifications`                   |
+| GET    | `/api/v3/notifications/stream`            | Stream notifications using SSE                       | `GET /notifications/stream` (SSE)      |
+| POST   | `/api/v3/messages`                        | Send a new message                                   | `POST /messages`                       |
+| GET    | `/api/v3/messages/{messageId}`            | Get message metadata                                 | `GET /messages/{id}`                   |
+| GET    | `/api/v3/messages/{messageId}/document`   | Download the message payload                         | `GET /messages/{id}/business-document` |
+| GET    | `/api/v3/messages/{messageId}/status`     | Get delivery and application receipt status          | `GET /messages/{id}/status`            |
+| POST   | `/api/v3/messages/{messageId}/apprec`     | Send an application receipt                          | `POST /messages/{id}/apprec`           |
+| PUT    | `/api/v3/messages/{messageId}/downloaded` | Mark a message as downloaded for a recipient         | `PUT /messages/{id}/downloaded`        |
+| PUT    | `/api/v3/mshconfigurations`               | Create or update MSH configurations for given her id | `PUT /mshconfigurations`               |
+| DELETE | `/api/v3/mshconfigurations`               | Delete MSH configurations for given her ids          | `DELETE /mshconfigurations`            |
+| GET    | `/api/v3/ping`                            | Test the connection to NHN                           | `GET /ping`                            |
 
 V3 supports notification polling and SSE streaming. Consumers must reconnect when a stream closes and resume from the last successfully processed offset.
 
