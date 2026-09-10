@@ -338,7 +338,7 @@ class HttpEdiAdapterClient(
         herIds: List<Int>,
         offset: Int?
     ): ClientSSESessionWithDeserialization {
-        log.debug { "Opening notification stream for ${herIds.size} her ids from offset $offset" }
+        log.debug { "Opening notification stream for her ids: $herIds from offset $offset" }
         return httpClient.serverSentEventsSession(
             "$baseUrl/notifications/stream",
             deserialize = { type, data ->
