@@ -20,9 +20,9 @@ internal fun Raise<ValidationError>.herIds(call: ApplicationCall, maxItems: Int?
     return herIds.map { it.toString() }
 }
 
-internal fun Raise<ValidationError>.offset(call: ApplicationCall): Long? =
+internal fun Raise<ValidationError>.offset(call: ApplicationCall): Int? =
     call.request.queryParameters[OFFSET]?.let {
-        val offset = it.trim().toLongOrNull() ?: raise(OffsetInvalidFormat)
+        val offset = it.trim().toIntOrNull() ?: raise(OffsetInvalidFormat)
         ensure(offset >= 0) { OffsetInvalidFormat }
         offset
     }

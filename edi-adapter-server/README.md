@@ -62,7 +62,7 @@ Routes are versioned under `/api/v1`, `/api/v2`, and `/api/v3`. Their upstream `
 
 V3 supports notification polling and SSE streaming. Consumers must reconnect when a stream closes and resume from the last successfully processed offset.
 
-NHN errors are forwarded unchanged; local errors use `MshApiProblemDetails`. The Kotlin client currently supports V1/V2 only.
+NHN errors are forwarded unchanged; local errors use `MshApiProblemDetails`. The Kotlin client uses V3, including automatic SSE reconnection from the last emitted notification, starting from a caller-provided offset.
 
 See the [NHN V3 OpenAPI](https://utviklerportal.nhn.no/informasjonstjenester/meldingsutveksling/edi-20/edi-20-ekstern-docs/openapi/meldingstjener-api-test-v3-internett) for request and response details, and the [migration guide](https://utviklerportal.nhn.no/informasjonstjenester/meldingsutveksling/edi-20/edi-20-ekstern-docs/docs/api-version-3/migration_to_v3_engbmd) for configuration and migration requirements.
 

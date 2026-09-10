@@ -82,7 +82,7 @@ fun MessageError.toContent(): TextContent =
             TextContent("Offset is required")
 
         is OffsetInvalidFormat ->
-            TextContent("Offset must be a non-negative 64-bit integer")
+            TextContent("Offset must be a non-negative 32-bit integer")
 
         is NotificationsToFetchInvalidFormat ->
             TextContent("Notifications to fetch must be between 1 and 1000")

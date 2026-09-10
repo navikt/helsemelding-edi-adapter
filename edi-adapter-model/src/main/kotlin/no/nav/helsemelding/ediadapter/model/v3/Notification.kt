@@ -25,5 +25,5 @@ data class Notification(
     val notificationTriggeredByHerId: Int? = null,
     val description: String? = null,
     val createdAt: String? = null,
-    val offset: Long
+    val offset: Int
 )

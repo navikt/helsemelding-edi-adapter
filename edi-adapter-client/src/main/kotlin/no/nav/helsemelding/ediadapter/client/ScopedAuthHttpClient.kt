@@ -8,6 +8,7 @@ import io.ktor.client.plugins.auth.Auth
 import io.ktor.client.plugins.auth.providers.BearerTokens
 import io.ktor.client.plugins.auth.providers.bearer
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.sse.SSE
 import io.ktor.client.request.forms.submitForm
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.parameters
@@ -38,6 +39,8 @@ private fun httpClient(
     scope: String
 ): HttpClient =
     HttpClient(CIO) {
+        expectSuccess = false
+        install(SSE) { maxReconnectionAttempts = 0 }
         install(HttpTimeout) {
             connectTimeoutMillis = config().httpClient.connectionTimeout.toMillis()
         }

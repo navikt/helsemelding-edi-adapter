@@ -56,12 +56,12 @@ object MessagesApiV3 {
                 }
             }
 
-            queryParameter<Long>("offset") {
+            queryParameter<Int>("offset") {
                 description = "Last successfully processed offset (>= 0). Offsets may have gaps."
                 required = true
 
                 example("Last processed offset") {
-                    value = 45459L
+                    value = 45459
                 }
             }
 
@@ -90,7 +90,7 @@ object MessagesApiV3 {
                                     notificationTriggeredByHerId = 8142519,
                                     description = "A new message is available for download.",
                                     createdAt = "2026-05-08T08:32:15.31+00:00",
-                                    offset = 45460L
+                                    offset = 45460
                                 )
                             )
                         )
@@ -168,12 +168,12 @@ object MessagesApiV3 {
                 }
             }
 
-            queryParameter<Long>("offset") {
+            queryParameter<Int>("offset") {
                 description = "Last successfully processed offset (>= 0). Offsets may have gaps. Starts at the end of the stream if omitted."
                 required = false
 
                 example("Last processed offset") {
-                    value = 45459L
+                    value = 45459
                 }
             }
         }

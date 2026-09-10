@@ -11,6 +11,7 @@ dependencies {
     implementation(libs.arrow.core)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.serialization.datetime)
+    testImplementation(testLibs.bundles.kotest)
 }
 
 java {
@@ -49,7 +50,7 @@ publishing {
         create<MavenPublication>("mavenJava") {
             groupId = "no.nav.helsemelding"
             artifactId = "edi-adapter-model"
-            version = "0.0.9"
+            version = "0.1.0"
             from(components["java"])
         }
     }
