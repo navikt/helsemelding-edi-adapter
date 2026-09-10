@@ -297,7 +297,14 @@ class NotificationStreamSpec : StringSpec(
                     routing {
                         get("/api/v3/notifications/stream") {
                             attempts++
-                            call.respondText("event: notification\ndata: invalid\n\n", ContentType.Text.EventStream)
+                            call.respondText(
+                                """
+                                event: notification
+                                data: invalid
+
+                                """.trimIndent() + "\n",
+                                ContentType.Text.EventStream
+                            )
                         }
                     }
                 }
