@@ -159,7 +159,7 @@ class NotificationStreamSpec : StringSpec(
             }
         }
 
-        "streamNotifications retries a temporary upstream error" {
+        "streamNotifications retries after a temporary upstream error" {
             testApplication {
                 var attempts = 0
                 application {
@@ -184,7 +184,7 @@ class NotificationStreamSpec : StringSpec(
             }
         }
 
-        "streamNotifications retries a transport failure and uses the supplied client authentication configuration" {
+        "streamNotifications retries after a transport failure and uses the supplied client authentication configuration" {
             testApplication {
                 var attempts = 0
                 val failFirstRequest = createClientPlugin("FailFirstRequest") {
