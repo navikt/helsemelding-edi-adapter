@@ -74,24 +74,19 @@ class NotificationStreamSpec : StringSpec(
                             call.respondText(
                                 """
                                 event: notification
-                                data: {"type":"NewMessage",
-                                data: "notificationReceiverHerId":123,"offset":1}
+                                data: {"type":"NewMessage","notificationReceiverHerId":123,"offset":1}
 
                                 event: notification
-                                data: {"type":"RefusedMessage",
-                                data: "notificationReceiverHerId":123,"offset":2}
+                                data: {"type":"RefusedMessage","notificationReceiverHerId":123,"offset":2}
 
                                 event: notification
-                                data: {"type":"MessageSentStateUpdated",
-                                data: "notificationReceiverHerId":123,"offset":3}
+                                data: {"type":"MessageSentStateUpdated","notificationReceiverHerId":123,"offset":3}
 
                                 event: notification
-                                data: {"type":"MessageApprecInfoUpdated",
-                                data: "notificationReceiverHerId":123,"offset":4}
+                                data: {"type":"MessageApprecInfoUpdated","notificationReceiverHerId":123,"offset":4}
 
                                 event: notification
-                                data: {"type":"MessageDeliveryStateUpdated",
-                                data: "notificationReceiverHerId":123,"offset":5}
+                                data: {"type":"MessageDeliveryStateUpdated","notificationReceiverHerId":123,"offset":5}
 
                                 """.trimIndent() + "\n",
                                 ContentType.Text.EventStream
