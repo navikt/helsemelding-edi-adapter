@@ -20,6 +20,7 @@ import no.nav.helsemelding.ediadapter.model.v3.MarkAsDownloadedRequest
 import no.nav.helsemelding.ediadapter.model.v3.PostAppRecRequest
 import no.nav.helsemelding.ediadapter.model.v3.PostMessageRequest
 import no.nav.helsemelding.ediadapter.model.v3.SetMshConfigurationsRequest
+import no.nav.helsemelding.ediadapter.server.config
 import no.nav.helsemelding.ediadapter.server.herIds
 import no.nav.helsemelding.ediadapter.server.messageId
 import no.nav.helsemelding.ediadapter.server.notificationParameters
@@ -45,6 +46,7 @@ import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.postApprecDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.postMessageDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.setMshConfigurationsDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.streamNotificationsDocs
+import no.nav.helsemelding.ediadapter.server.model.PostMessageRequest as InternalPostMessageRequest
 
 internal fun Route.v3Routes(ediClient: HttpClient) {
     get(GET_NOTIFICATIONS, getNotificationsDocs) {
@@ -74,7 +76,7 @@ internal fun Route.v3Routes(ediClient: HttpClient) {
                 val message = call.receive<PostMessageRequest>()
                 ediClient.post("messages") {
                     contentType(ContentType.Application.Json)
-                    setBody(message)
+                    setBody(InternalPostMessageRequest.from(message, config().nhn))
                 }
             }
         )

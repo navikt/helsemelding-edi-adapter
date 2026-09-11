@@ -15,9 +15,6 @@ import kotlinx.serialization.Serializable
  *     `base64`.
  * @property messageTypeIdentificator Document type identifier from FinnKode 8279, for example
  *     `DIALOG_HELSEFAGLIG`.
- * @property applicationName Name of the sending application or electronic patient record system (HIS
- *     1210:2018).
- * @property applicationVersion Version of the sending application (HIS 1210:2018).
  * @property transportMetadataOverrides Optional envelope overrides for exchanges requiring metadata beyond
  *     the automatically derived values.
  */
@@ -29,7 +26,5 @@ data class PostMessageRequest(
     val contentType: String,
     val contentTransferEncoding: String,
     val messageTypeIdentificator: String,
-    val applicationName: String,
-    val applicationVersion: String,
     val transportMetadataOverrides: MessageTransportMetadataOverrides? = null
 )

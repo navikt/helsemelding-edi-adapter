@@ -256,7 +256,7 @@ object MessagesApiV3 {
 
     val postMessageDocs: RouteConfig.() -> Unit = {
         summary = "Send a message"
-        description = "Submits a Base64-encoded XML document with sender, recipients and application metadata. Maximum request size is 35 MB."
+        description = "Submits a Base64-encoded XML document with sender and recipients. Maximum request size is 35 MB."
         tags = listOf("V3")
 
         request {
@@ -270,9 +270,7 @@ object MessagesApiV3 {
                         receiverHerIds = listOf(8142520),
                         contentType = "application/xml",
                         contentTransferEncoding = "base64",
-                        messageTypeIdentificator = "DIALOG_HELSEFAGLIG",
-                        applicationName = "EPJ Front",
-                        applicationVersion = "18.0.8"
+                        messageTypeIdentificator = "DIALOG_HELSEFAGLIG"
                     )
                 }
             }

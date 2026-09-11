@@ -353,8 +353,6 @@ class SerializationSpec : StringSpec(
                     contentType = "application/xml",
                     contentTransferEncoding = "8bit",
                     messageTypeIdentificator = "message-type",
-                    applicationName = "application",
-                    applicationVersion = "1.0",
                     transportMetadataOverrides = MessageTransportMetadataOverrides(compressPayload = true)
                 ),
                 """
@@ -368,8 +366,6 @@ class SerializationSpec : StringSpec(
                   "contentType": "application/xml",
                   "contentTransferEncoding": "8bit",
                   "messageTypeIdentificator": "message-type",
-                  "applicationName": "application",
-                  "applicationVersion": "1.0",
                   "transportMetadataOverrides": {
                     "compressPayload": true
                   }
@@ -661,7 +657,7 @@ class SerializationSpec : StringSpec(
         }
 
         "PostMessageRequest preserves nullable and default fields" {
-            val expected = PostMessageRequest("document", 123, listOf(456), "application/xml", "8bit", "type", "application", "1.0")
+            val expected = PostMessageRequest("document", 123, listOf(456), "application/xml", "8bit", "type")
             assertSerialization(
                 expected,
                 """
@@ -673,9 +669,7 @@ class SerializationSpec : StringSpec(
                   ],
                   "contentType": "application/xml",
                   "contentTransferEncoding": "8bit",
-                  "messageTypeIdentificator": "type",
-                  "applicationName": "application",
-                  "applicationVersion": "1.0"
+                  "messageTypeIdentificator": "type"
                 }
                 """
             )
@@ -690,8 +684,6 @@ class SerializationSpec : StringSpec(
                   "contentType": "application/xml",
                   "contentTransferEncoding": "8bit",
                   "messageTypeIdentificator": "type",
-                  "applicationName": "application",
-                  "applicationVersion": "1.0",
                   "transportMetadataOverrides": null
                 }
                 """
