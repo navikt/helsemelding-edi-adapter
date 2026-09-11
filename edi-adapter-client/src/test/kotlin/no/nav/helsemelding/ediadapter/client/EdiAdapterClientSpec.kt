@@ -74,12 +74,12 @@ class EdiAdapterClientSpec : StringSpec(
         }
 
         "postMessage sends the V3 payload and decodes an accepted response" {
-            val body = PostMessageRequest("PHhtbC8+", 123, listOf(456), "application/xml", "base64", "DIALOG_HELSEFAGLIG", "app", "1.0")
+            val body = PostMessageRequest("PHhtbC8+", 123, listOf(456), "application/xml", "base64", "DIALOG_HELSEFAGLIG")
             withClient({ request ->
                 request.method shouldBe HttpMethod.Post
                 request.url.fullPath shouldBe "/api/v3/messages"
                 request.body.shouldBeInstanceOf<TextContent>().contentType.toString() shouldBe "application/json"
-                Json.decodeFromString<PostMessageRequest>((request.body as TextContent).text) shouldBe body
+                request.body<PostMessageRequest>() shouldBe body
                 respondJson(PostMessageResponse(id.toString()), HttpStatusCode.Accepted)
             }) { client ->
                 client.postMessage(body).shouldBeRight(PostMessageResponse(id.toString()))
@@ -118,7 +118,7 @@ class EdiAdapterClientSpec : StringSpec(
             withClient({ request ->
                 request.method shouldBe HttpMethod.Post
                 request.url.fullPath shouldBe "/api/v3/messages/$id/apprec"
-                Json.decodeFromString<PostAppRecRequest>((request.body as TextContent).text) shouldBe body
+                request.body<PostAppRecRequest>() shouldBe body
                 respondJson(PostApprecResponse(id.toString()), HttpStatusCode.Accepted)
             }) { client -> client.postApprec(id, body).shouldBeRight(PostApprecResponse(id.toString())) }
         }
@@ -128,7 +128,7 @@ class EdiAdapterClientSpec : StringSpec(
             withClient({ request ->
                 request.method shouldBe HttpMethod.Put
                 request.url.fullPath shouldBe "/api/v3/messages/$id/downloaded"
-                Json.decodeFromString<MarkAsDownloadedRequest>((request.body as TextContent).text) shouldBe body
+                request.body<MarkAsDownloadedRequest>() shouldBe body
                 respond("", HttpStatusCode.NoContent)
             }) { client -> client.markMessageAsDownloaded(id, body).shouldBeRight(Unit) }
         }
@@ -138,7 +138,7 @@ class EdiAdapterClientSpec : StringSpec(
             withClient({ request ->
                 request.method shouldBe HttpMethod.Put
                 request.url.fullPath shouldBe "/api/v3/mshconfigurations"
-                Json.decodeFromString<SetMshConfigurationsRequest>((request.body as TextContent).text) shouldBe body
+                request.body<SetMshConfigurationsRequest>() shouldBe body
                 respond("", HttpStatusCode.NoContent)
             }) { client -> client.setMshConfigurations(body).shouldBeRight(Unit) }
         }
@@ -205,6 +205,8 @@ class EdiAdapterClientSpec : StringSpec(
         }
     }
 )
+
+private inline fun <reified T> HttpRequestData.body(): T = Json.decodeFromString((body as TextContent).text)
 
 private suspend fun withClient(
     handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,

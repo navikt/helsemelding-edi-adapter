@@ -4,6 +4,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.ktor.client.call.body
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.post
@@ -44,7 +45,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import no.nav.helsemelding.ediadapter.model.v3.GetNotificationsResponse
 import no.nav.helsemelding.ediadapter.model.v3.GetStatusResponse
+import no.nav.helsemelding.ediadapter.model.v3.MarkAsDownloadedRequest
+import no.nav.helsemelding.ediadapter.model.v3.MessageTransportMetadataOverrides
 import no.nav.helsemelding.ediadapter.model.v3.MshApiProblemDetails
+import no.nav.helsemelding.ediadapter.model.v3.PostAppRecRequest
+import no.nav.helsemelding.ediadapter.model.v3.SetMshConfigurationsRequest
+import no.nav.helsemelding.ediadapter.server.config
+import no.nav.helsemelding.ediadapter.server.model.SendMessageRequest
 import java.io.IOException
 import kotlin.time.Duration.Companion.milliseconds
 import io.ktor.http.HttpHeaders.ContentType as ContentTypeHeader
@@ -444,7 +451,7 @@ class RoutesV3Spec : StringSpec(
             }
         }
 
-        "POST /messages forwards request body and returns 202 from EDI response" {
+        "POST /messages adds configured application metadata and returns 202 from EDI response" {
             val payload = """{
                 "businessDocument": "PHhtbC8+",
                 "senderHerId": 42,
@@ -454,8 +461,6 @@ class RoutesV3Spec : StringSpec(
                 "contentType": "application/xml",
                 "contentTransferEncoding": "base64",
                 "messageTypeIdentificator": "DIALOG_HELSEFAGLIG",
-                "applicationName": "Test EPJ",
-                "applicationVersion": "1.0",
                 "transportMetadataOverrides": {
                     "cpaId": "test-cpa",
                     "conversationId": null,
@@ -474,8 +479,16 @@ class RoutesV3Spec : StringSpec(
             val ediClientV3 = fakeEdiClient { request ->
                 request.url.fullPath shouldBe "/messages"
                 request.method shouldBe HttpMethod.Post
-                JsonUtil.parseToJsonElement((request.body as TextContent).text) shouldBe JsonUtil.parseToJsonElement(
-                    payload
+                request.body<SendMessageRequest>() shouldBe SendMessageRequest(
+                    businessDocument = "PHhtbC8+",
+                    senderHerId = 42,
+                    receiverHerIds = listOf(1337),
+                    contentType = "application/xml",
+                    contentTransferEncoding = "base64",
+                    messageTypeIdentificator = "DIALOG_HELSEFAGLIG",
+                    applicationName = config().nhn.applicationName.value,
+                    applicationVersion = config().nhn.applicationVersion.value,
+                    transportMetadataOverrides = MessageTransportMetadataOverrides(cpaId = "test-cpa")
                 )
                 respond(
                     result,
@@ -531,9 +544,7 @@ class RoutesV3Spec : StringSpec(
             val ediClientV3 = fakeEdiClient { request ->
                 request.url.fullPath shouldBe "/messages/$V3_MESSAGE_ID/apprec"
                 request.method shouldBe HttpMethod.Post
-                JsonUtil.parseToJsonElement((request.body as TextContent).text) shouldBe JsonUtil.parseToJsonElement(
-                    payload
-                )
+                request.body<PostAppRecRequest>() shouldBe JsonUtil.decodeFromString<PostAppRecRequest>(payload)
                 respond(
                     result,
                     Accepted,
@@ -561,9 +572,7 @@ class RoutesV3Spec : StringSpec(
             val ediClientV3 = fakeEdiClient { request ->
                 request.url.fullPath shouldBe "/messages/$V3_MESSAGE_ID/downloaded"
                 request.method shouldBe HttpMethod.Put
-                JsonUtil.parseToJsonElement((request.body as TextContent).text) shouldBe JsonUtil.parseToJsonElement(
-                    payload
-                )
+                request.body<MarkAsDownloadedRequest>() shouldBe JsonUtil.decodeFromString<MarkAsDownloadedRequest>(payload)
                 respond(
                     result,
                     NoContent,
@@ -604,9 +613,7 @@ class RoutesV3Spec : StringSpec(
             val ediClientV3 = fakeEdiClient { request ->
                 request.url.fullPath shouldBe "/mshconfigurations"
                 request.method shouldBe HttpMethod.Put
-                JsonUtil.parseToJsonElement((request.body as TextContent).text) shouldBe JsonUtil.parseToJsonElement(
-                    payload
-                )
+                request.body<SetMshConfigurationsRequest>() shouldBe JsonUtil.decodeFromString<SetMshConfigurationsRequest>(payload)
                 respond(
                     result,
                     NoContent,
@@ -822,8 +829,6 @@ class RoutesV3Spec : StringSpec(
                 "contentType": "application/xml",
                 "contentTransferEncoding": "base64",
                 "messageTypeIdentificator": "DIALOG_HELSEFAGLIG",
-                "applicationName": "Test EPJ",
-                "applicationVersion": "1.0",
                 "transportMetadataOverrides": {
                     "cpaId": "test-cpa",
                     "conversationId": null,
@@ -1037,3 +1042,5 @@ class RoutesV3Spec : StringSpec(
         }
     }
 )
+
+private inline fun <reified T> HttpRequestData.body(): T = JsonUtil.decodeFromString((body as TextContent).text)

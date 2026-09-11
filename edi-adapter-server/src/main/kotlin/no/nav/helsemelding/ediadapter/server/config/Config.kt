@@ -23,10 +23,18 @@ value class Port(val value: Int)
 
 data class Nhn(
     val baseUrl: URI,
-    val keyPairPath: KeyPairPath
+    val keyPairPath: KeyPairPath,
+    val applicationName: ApplicationName,
+    val applicationVersion: ApplicationVersion
 ) {
     @JvmInline
     value class KeyPairPath(val value: String)
+
+    @JvmInline
+    value class ApplicationName(val value: String)
+
+    @JvmInline
+    value class ApplicationVersion(val value: String)
 }
 
 data class NhnOAuth(
