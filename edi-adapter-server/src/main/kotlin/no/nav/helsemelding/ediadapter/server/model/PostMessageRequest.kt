@@ -6,7 +6,7 @@ import no.nav.helsemelding.ediadapter.model.v3.PostMessageRequest
 import no.nav.helsemelding.ediadapter.server.config.Nhn
 
 @Serializable
-internal data class SendMessageRequest(
+internal data class PostMessageRequest(
     val businessDocument: String,
     val senderHerId: Int,
     val receiverHerIds: List<Int>,
@@ -18,7 +18,7 @@ internal data class SendMessageRequest(
     val transportMetadataOverrides: MessageTransportMetadataOverrides? = null
 ) {
     companion object {
-        fun from(request: PostMessageRequest, config: Nhn) = SendMessageRequest(
+        fun from(request: PostMessageRequest, config: Nhn) = PostMessageRequest(
             businessDocument = request.businessDocument,
             senderHerId = request.senderHerId,
             receiverHerIds = request.receiverHerIds,

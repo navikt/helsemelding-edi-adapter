@@ -51,7 +51,7 @@ import no.nav.helsemelding.ediadapter.model.v3.MshApiProblemDetails
 import no.nav.helsemelding.ediadapter.model.v3.PostAppRecRequest
 import no.nav.helsemelding.ediadapter.model.v3.SetMshConfigurationsRequest
 import no.nav.helsemelding.ediadapter.server.config
-import no.nav.helsemelding.ediadapter.server.model.SendMessageRequest
+import no.nav.helsemelding.ediadapter.server.model.PostMessageRequest
 import java.io.IOException
 import kotlin.time.Duration.Companion.milliseconds
 import io.ktor.http.HttpHeaders.ContentType as ContentTypeHeader
@@ -479,7 +479,7 @@ class RoutesV3Spec : StringSpec(
             val ediClientV3 = fakeEdiClient { request ->
                 request.url.fullPath shouldBe "/messages"
                 request.method shouldBe HttpMethod.Post
-                request.body<SendMessageRequest>() shouldBe SendMessageRequest(
+                request.body<PostMessageRequest>() shouldBe PostMessageRequest(
                     businessDocument = "PHhtbC8+",
                     senderHerId = 42,
                     receiverHerIds = listOf(1337),
