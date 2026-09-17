@@ -49,6 +49,7 @@ class EdiAdapterClientSpec : StringSpec(
             val expected = GetNotificationsResponse(
                 listOf(
                     Notification(
+                        notificationId = id,
                         type = NotificationType.NEW_MESSAGE,
                         notificationReceiverHerId = 123,
                         offset = 2147483647
@@ -87,7 +88,7 @@ class EdiAdapterClientSpec : StringSpec(
         }
 
         "getMessage returns V3 metadata" {
-            val expected = GetMessageResponse(id.toString(), senderHerId = 123, receiverHerIds = listOf(456))
+            val expected = GetMessageResponse(id, senderHerId = 123, receiverHerIds = listOf(456))
             withClient({ request ->
                 request.method shouldBe HttpMethod.Get
                 request.url.fullPath shouldBe "/api/v3/messages/$id"

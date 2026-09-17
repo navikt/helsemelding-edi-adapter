@@ -84,7 +84,7 @@ interface EdiAdapterClient : AutoCloseable {
      */
     suspend fun getNotifications(
         herIds: List<Int>,
-        offset: Int,
+        offset: Long,
         notificationsToFetch: Int? = null
     ): Either<EdiAdapterError, GetNotificationsResponse>
 
@@ -98,7 +98,7 @@ interface EdiAdapterClient : AutoCloseable {
      */
     suspend fun getNotifications(
         herId: Int,
-        offset: Int,
+        offset: Long,
         notificationsToFetch: Int? = null
     ): Either<EdiAdapterError, GetNotificationsResponse> =
         getNotifications(listOf(herId), offset, notificationsToFetch)
@@ -126,7 +126,7 @@ interface EdiAdapterClient : AutoCloseable {
      * @return A cold [Flow] emitting [Either.Right] notifications or a terminal [Either.Left] with an
      *     [EdiAdapterError]. Retryable failures are handled internally without emitting a Left.
      */
-    fun streamNotifications(herIds: List<Int>, offset: Int? = null): Flow<Either<EdiAdapterError, Notification>>
+    fun streamNotifications(herIds: List<Int>, offset: Long? = null): Flow<Either<EdiAdapterError, Notification>>
 
     /**
      * Streams notifications for a single her id. Use `0` on first startup or when no processed offset
@@ -140,7 +140,7 @@ interface EdiAdapterClient : AutoCloseable {
      */
     fun streamNotifications(
         herId: Int,
-        offset: Int? = null
+        offset: Long? = null
     ): Flow<Either<EdiAdapterError, Notification>> = streamNotifications(listOf(herId), offset)
 
     /**
@@ -247,7 +247,7 @@ class HttpEdiAdapterClient(
 
     override suspend fun getNotifications(
         herIds: List<Int>,
-        offset: Int,
+        offset: Long,
         notificationsToFetch: Int?
     ): Either<EdiAdapterError, GetNotificationsResponse> = request(Get, "notifications") {
         herIds.forEach { parameter("herIds", it) }
@@ -288,7 +288,7 @@ class HttpEdiAdapterClient(
 
     override fun streamNotifications(
         herIds: List<Int>,
-        offset: Int?
+        offset: Long?
     ): Flow<Either<EdiAdapterError, Notification>> = flow {
         either {
             var resumeOffset = offset
@@ -320,7 +320,7 @@ class HttpEdiAdapterClient(
 
     private suspend fun collectNotifications(
         herIds: List<Int>,
-        offset: Int?,
+        offset: Long?,
         onNotification: suspend (Notification) -> Unit
     ): Either<EdiAdapterError, Boolean> = either {
         var finished = false
@@ -336,7 +336,7 @@ class HttpEdiAdapterClient(
 
     private suspend fun openNotificationSession(
         herIds: List<Int>,
-        offset: Int?
+        offset: Long?
     ): ClientSSESessionWithDeserialization {
         log.debug { "Opening notification stream for her ids: $herIds from offset $offset" }
         return httpClient.serverSentEventsSession(

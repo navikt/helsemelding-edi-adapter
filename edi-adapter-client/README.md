@@ -41,13 +41,13 @@ Cancellation propagates. Ordinary HTTP calls are not retried automatically.
 
 ## Notification streaming
 
-`streamNotifications` accepts one her id or a list, plus an optional `Int` offset.
+`streamNotifications` accepts one her id or a list, plus an optional `Long` offset.
 Omitting the offset starts at the end of the stream. Each collection opens its own connection and
 reconnects from the last emitted notification, with exponential backoff and jitter capped at 30 seconds.
 EOF, transport failures and HTTP 408, 429 or 5xx trigger reconnect. Other HTTP errors and invalid data
 emit a terminal `Left`; HTTP 204 ends the stream normally. Configuration and collector exceptions propagate.
 
-`findLatestOffset()` returns the latest stored offset as an `Int`, or `0` when no offsets are found:
+`findLatestOffset()` returns the latest stored offset as a `Long`, or `0L` when no offsets are found:
 
 ```kotlin
 val initialOffset = checkpointStore.findLatestOffset()
