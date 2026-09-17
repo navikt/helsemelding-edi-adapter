@@ -30,6 +30,7 @@ import no.nav.helsemelding.ediadapter.model.v3.Notification
 import no.nav.helsemelding.ediadapter.model.v3.NotificationType
 import java.io.IOException
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.uuid.Uuid
 
 class NotificationStreamSpec : StringSpec(
     {
@@ -48,7 +49,7 @@ class NotificationStreamSpec : StringSpec(
                                 data:
 
                                 event: notification
-                                data: {"type":"NewMessage",
+                                data: {"notificationId":"17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9","type":"NewMessage",
                                 data: "notificationReceiverHerId":123,"offset":2147483647}
 
                                 """.trimIndent() + "\n",
@@ -74,19 +75,19 @@ class NotificationStreamSpec : StringSpec(
                             call.respondText(
                                 """
                                 event: notification
-                                data: {"type":"NewMessage","notificationReceiverHerId":123,"offset":1}
+                                data: {"notificationId":"17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9","relatedMessageId":"733be787-0ad0-475a-98b7-00512caa9ccb","type":"NewMessage","notificationReceiverHerId":123,"offset":1}
 
                                 event: notification
-                                data: {"type":"RefusedMessage","notificationReceiverHerId":123,"offset":2}
+                                data: {"notificationId":"17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9","relatedMessageId":"733be787-0ad0-475a-98b7-00512caa9ccb","type":"RefusedMessage","notificationReceiverHerId":123,"offset":2}
 
                                 event: notification
-                                data: {"type":"MessageSentStateUpdated","notificationReceiverHerId":123,"offset":3}
+                                data: {"notificationId":"17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9","relatedMessageId":"733be787-0ad0-475a-98b7-00512caa9ccb","type":"MessageSentStateUpdated","notificationReceiverHerId":123,"offset":3}
 
                                 event: notification
-                                data: {"type":"MessageApprecInfoUpdated","notificationReceiverHerId":123,"offset":4}
+                                data: {"notificationId":"17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9","relatedMessageId":"70104e29-d573-4578-9ac7-1383410fffc3","type":"MessageApprecInfoUpdated","notificationReceiverHerId":123,"offset":4}
 
                                 event: notification
-                                data: {"type":"MessageDeliveryStateUpdated","notificationReceiverHerId":123,"offset":5}
+                                data: {"notificationId":"17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9","relatedMessageId":"733be787-0ad0-475a-98b7-00512caa9ccb","type":"MessageDeliveryStateUpdated","notificationReceiverHerId":123,"offset":5}
 
                                 """.trimIndent() + "\n",
                                 ContentType.Text.EventStream
@@ -107,7 +108,44 @@ class NotificationStreamSpec : StringSpec(
                         NotificationType.MESSAGE_APPREC_INFO_UPDATED,
                         NotificationType.MESSAGE_DELIVERY_STATE_UPDATED
                     )
-                    notifications.map { it.offset } shouldBe listOf(1, 2, 3, 4, 5)
+                    notifications.map { it.offset } shouldBe listOf(1L, 2L, 3L, 4L, 5L)
+                    notifications.map { it.relatedMessageId } shouldBe listOf(
+                        Uuid.parse("733be787-0ad0-475a-98b7-00512caa9ccb"),
+                        Uuid.parse("733be787-0ad0-475a-98b7-00512caa9ccb"),
+                        Uuid.parse("733be787-0ad0-475a-98b7-00512caa9ccb"),
+                        Uuid.parse("70104e29-d573-4578-9ac7-1383410fffc3"),
+                        Uuid.parse("733be787-0ad0-475a-98b7-00512caa9ccb")
+                    )
+                }
+            }
+        }
+
+        "streamNotifications accepts missing and null relatedMessageId" {
+            testApplication {
+                application {
+                    routing {
+                        get("/api/v3/notifications/stream") {
+                            call.respondText(
+                                """
+                                event: notification
+                                data: {"notificationId":"17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9","type":"NewMessage","notificationReceiverHerId":123,"offset":1}
+
+                                event: notification
+                                data: {"notificationId":"70104e29-d573-4578-9ac7-1383410fffc3","relatedMessageId":null,"type":"NewMessage","notificationReceiverHerId":123,"offset":2}
+
+                                """.trimIndent() + "\n",
+                                ContentType.Text.EventStream
+                            )
+                        }
+                    }
+                }
+                HttpEdiAdapterClient({ streamingClient() }, "http://localhost").use { client ->
+                    val notifications = withTimeout(5000.milliseconds) {
+                        client.streamNotifications(123, offset = 0).take(2).toList()
+                    }.map { it.shouldBeRight() }
+
+                    notifications.map { it.offset } shouldBe listOf(1L, 2L)
+                    notifications.map { it.relatedMessageId } shouldBe listOf(null, null)
                 }
             }
         }
@@ -119,7 +157,7 @@ class NotificationStreamSpec : StringSpec(
                     routing {
                         get("/api/v3/notifications/stream") {
                             offsets += call.request.queryParameters["offset"]
-                            call.respondText(event(offsets.size), ContentType.Text.EventStream)
+                            call.respondText(event(offsets.size.toLong()), ContentType.Text.EventStream)
                         }
                     }
                 }
@@ -127,7 +165,7 @@ class NotificationStreamSpec : StringSpec(
                     val notifications = withTimeout(5000.milliseconds) {
                         client.streamNotifications(listOf(123), 0).take(2).toList()
                     }
-                    notifications.map { it.shouldBeRight().offset } shouldBe listOf(1, 2)
+                    notifications.map { it.shouldBeRight().offset } shouldBe listOf(1L, 2L)
                     offsets shouldBe listOf("0", "1")
                 }
             }
@@ -343,15 +381,15 @@ class NotificationStreamSpec : StringSpec(
                         get("/api/v3/notifications/stream") {
                             val offset = call.request.queryParameters["offset"]
                             offsets += offset
-                            call.respondText(event(offset!!.toInt() + 1), ContentType.Text.EventStream)
+                            call.respondText(event(offset!!.toLong() + 1), ContentType.Text.EventStream)
                         }
                     }
                 }
                 HttpEdiAdapterClient({ streamingClient() }, "http://localhost").use { client ->
                     val stream = client.streamNotifications(listOf(123), 0)
                     withTimeout(5000.milliseconds) {
-                        stream.take(2).toList().map { it.shouldBeRight().offset } shouldBe listOf(1, 2)
-                        stream.take(2).toList().map { it.shouldBeRight().offset } shouldBe listOf(1, 2)
+                        stream.take(2).toList().map { it.shouldBeRight().offset } shouldBe listOf(1L, 2L)
+                        stream.take(2).toList().map { it.shouldBeRight().offset } shouldBe listOf(1L, 2L)
                     }
                     offsets shouldBe listOf("0", "1", "0", "1")
                 }
@@ -409,13 +447,14 @@ class NotificationStreamSpec : StringSpec(
     }
 )
 
-private fun notification(offset: Int) = Notification(
+private fun notification(offset: Long) = Notification(
+    notificationId = Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"),
     type = NotificationType.NEW_MESSAGE,
     notificationReceiverHerId = 123,
     offset = offset
 )
 
-private fun event(offset: Int) = "event: notification\ndata: ${Json.encodeToString(notification(offset))}\n\n"
+private fun event(offset: Long) = "event: notification\ndata: ${Json.encodeToString(notification(offset))}\n\n"
 
 private fun ApplicationTestBuilder.streamingClient() = createClient {
     expectSuccess = false

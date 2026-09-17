@@ -68,6 +68,7 @@ class RoutesV3Spec : StringSpec(
                 """{
                     "notifications": [
                         {
+                            "notificationId": "17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9",
                             "relatedMessageId": "$V3_MESSAGE_ID",
                             "type": "MessageDeliveryStateUpdated",
                             "notificationReceiverHerId": 42,
@@ -90,7 +91,7 @@ class RoutesV3Spec : StringSpec(
 
                 response.status shouldBe OK
                 response.bodyAsText() shouldBe payload
-                response.body<GetNotificationsResponse>().notifications.single().offset shouldBe 2147483647
+                response.body<GetNotificationsResponse>().notifications.single().offset shouldBe 2147483647L
             }
         }
 
@@ -254,23 +255,6 @@ class RoutesV3Spec : StringSpec(
                 client = createJsonEnabledClient()
 
                 val response = client.get("$ROOT_V3/notifications?herIds=42&offset=invalid")
-
-                response.status shouldBe BadRequest
-                val problem = response.body<MshApiProblemDetails>()
-
-                problem.status shouldBe 400
-                problem.instance shouldBe "$ROOT_V3/notifications"
-            }
-        }
-
-        "GET /notifications with offset exceeding Int range returns 400" {
-            val ediClientV3 = fakeEdiClient { error("Should not be called") }
-
-            testApplication {
-                installExternalRoutes(ediClientV3 = ediClientV3)
-                client = createJsonEnabledClient()
-
-                val response = client.get("$ROOT_V3/notifications?herIds=42&offset=2147483648")
 
                 response.status shouldBe BadRequest
                 val problem = response.body<MshApiProblemDetails>()

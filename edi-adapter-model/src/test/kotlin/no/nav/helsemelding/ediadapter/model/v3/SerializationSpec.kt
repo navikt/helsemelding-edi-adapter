@@ -3,6 +3,8 @@ package no.nav.helsemelding.ediadapter.model.v3
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import kotlinx.serialization.json.Json
+import kotlin.time.Instant
+import kotlin.uuid.Uuid
 
 class SerializationSpec : StringSpec(
     {
@@ -106,24 +108,24 @@ class SerializationSpec : StringSpec(
         "GetMessageResponse serializes and deserializes all fields" {
             assertSerialization(
                 GetMessageResponse(
-                    id = "message-id",
+                    id = Uuid.parse("733be787-0ad0-475a-98b7-00512caa9ccb"),
                     senderHerId = 123,
                     receiverHerIds = listOf(456, 789),
                     businessDocumentId = "document-id",
-                    businessDocumentGenDate = "2026-05-08T08:32:15.31",
+                    businessDocumentGenDate = Instant.parse("2026-05-08T08:32:15.310Z"),
                     businessDocumentMsgType = "message-type",
                     contentType = "application/xml"
                 ),
                 """
                 {
-                  "id": "message-id",
+                  "id": "733be787-0ad0-475a-98b7-00512caa9ccb",
                   "senderHerId": 123,
                   "receiverHerIds": [
                     456,
                     789
                   ],
                   "businessDocumentId": "document-id",
-                  "businessDocumentGenDate": "2026-05-08T08:32:15.31",
+                  "businessDocumentGenDate": "2026-05-08T08:32:15.310Z",
                   "businessDocumentMsgType": "message-type",
                   "contentType": "application/xml"
                 }
@@ -131,25 +133,36 @@ class SerializationSpec : StringSpec(
             )
         }
 
+        "GetMessageResponse interprets GenDate with offsets and Oslo local time" {
+            listOf("2026-05-08T08:32:15", "2026-05-08T08:32:15+02:00", "2026-05-08T06:32:15Z").forEach { date ->
+                val response = Json.decodeFromString<GetMessageResponse>(
+                    """{"id":"733be787-0ad0-475a-98b7-00512caa9ccb","businessDocumentGenDate":"$date"}"""
+                )
+                response.businessDocumentGenDate shouldBe Instant.parse("2026-05-08T06:32:15Z")
+            }
+        }
+
         "Notification serializes and deserializes all fields" {
             assertSerialization(
                 Notification(
-                    relatedMessageId = "message-id",
+                    notificationId = Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"),
+                    relatedMessageId = Uuid.parse("733be787-0ad0-475a-98b7-00512caa9ccb"),
                     type = NotificationType.NEW_MESSAGE,
                     notificationReceiverHerId = 456,
                     notificationTriggeredByHerId = 123,
                     description = "New message received",
-                    createdAt = "2026-05-08T08:32:15.31+00:00",
+                    createdAt = Instant.parse("2026-05-08T08:32:15.310Z"),
                     offset = 2147483647
                 ),
                 """
                 {
-                  "relatedMessageId": "message-id",
+                  "notificationId": "17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9",
+                  "relatedMessageId": "733be787-0ad0-475a-98b7-00512caa9ccb",
                   "type": "NewMessage",
                   "notificationReceiverHerId": 456,
                   "notificationTriggeredByHerId": 123,
                   "description": "New message received",
-                  "createdAt": "2026-05-08T08:32:15.31+00:00",
+                  "createdAt": "2026-05-08T08:32:15.310Z",
                   "offset": 2147483647
                 }
                 """
@@ -160,13 +173,14 @@ class SerializationSpec : StringSpec(
             assertSerialization(
                 GetNotificationsResponse(
                     listOf(
-                        Notification(type = NotificationType.NEW_MESSAGE, notificationReceiverHerId = 456, offset = 0)
+                        Notification(notificationId = Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"), type = NotificationType.NEW_MESSAGE, notificationReceiverHerId = 456, offset = 0)
                     )
                 ),
                 """
                 {
                   "notifications": [
                     {
+                      "notificationId": "17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9",
                       "type": "NewMessage",
                       "notificationReceiverHerId": 456,
                       "offset": 0
@@ -304,11 +318,11 @@ class SerializationSpec : StringSpec(
 
         "PingResponse serializes and deserializes all fields" {
             assertSerialization(
-                PingResponse("pong", "2026-05-08T08:32:15.31+00:00"),
+                PingResponse("pong", Instant.parse("2026-05-08T08:32:15.310Z")),
                 """
                 {
                   "response": "pong",
-                  "timestampUtc": "2026-05-08T08:32:15.31+00:00"
+                  "timestampUtc": "2026-05-08T08:32:15.310Z"
                 }
                 """
             )
@@ -492,19 +506,19 @@ class SerializationSpec : StringSpec(
         }
 
         "GetMessageResponse preserves nullable and default fields" {
-            val expected = GetMessageResponse("message-id")
+            val expected = GetMessageResponse(Uuid.parse("733be787-0ad0-475a-98b7-00512caa9ccb"))
             assertSerialization(
                 expected,
                 """
                 {
-                  "id": "message-id"
+                  "id": "733be787-0ad0-475a-98b7-00512caa9ccb"
                 }
                 """
             )
             Json.decodeFromString<GetMessageResponse>(
                 """
                 {
-                  "id": "message-id",
+                  "id": "733be787-0ad0-475a-98b7-00512caa9ccb",
                   "senderHerId": null,
                   "receiverHerIds": null,
                   "businessDocumentId": null,
@@ -583,11 +597,12 @@ class SerializationSpec : StringSpec(
         }
 
         "Notification preserves nullable and default fields" {
-            val expected = Notification(type = NotificationType.NEW_MESSAGE, notificationReceiverHerId = 456, offset = 0)
+            val expected = Notification(notificationId = Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"), type = NotificationType.NEW_MESSAGE, notificationReceiverHerId = 456, offset = 0)
             assertSerialization(
                 expected,
                 """
                 {
+                  "notificationId": "17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9",
                   "type": "NewMessage",
                   "notificationReceiverHerId": 456,
                   "offset": 0
@@ -597,6 +612,7 @@ class SerializationSpec : StringSpec(
             Json.decodeFromString<Notification>(
                 """
                 {
+                  "notificationId": "17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9",
                   "type": "NewMessage",
                   "notificationReceiverHerId": 456,
                   "offset": 0,

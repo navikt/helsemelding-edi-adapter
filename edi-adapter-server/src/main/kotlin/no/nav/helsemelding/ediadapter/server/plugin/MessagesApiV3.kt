@@ -32,6 +32,8 @@ import no.nav.helsemelding.ediadapter.model.v3.PostMessageResponse
 import no.nav.helsemelding.ediadapter.model.v3.ReceiveNotificationChannel
 import no.nav.helsemelding.ediadapter.model.v3.SetMshConfigurationsRequest
 import no.nav.helsemelding.ediadapter.model.v3.StatusInfo
+import kotlin.time.Instant
+import kotlin.uuid.Uuid
 
 object MessagesApiV3 {
 
@@ -56,7 +58,7 @@ object MessagesApiV3 {
                 }
             }
 
-            queryParameter<Int>("offset") {
+            queryParameter<Long>("offset") {
                 description = "Last successfully processed offset (>= 0). Offsets may have gaps."
                 required = true
 
@@ -84,12 +86,13 @@ object MessagesApiV3 {
                         value = GetNotificationsResponse(
                             notifications = listOf(
                                 Notification(
-                                    relatedMessageId = "733be787-0ad0-475a-98b7-00512caa9ccb",
+                                    notificationId = Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"),
+                                    relatedMessageId = Uuid.parse("733be787-0ad0-475a-98b7-00512caa9ccb"),
                                     type = NotificationType.NEW_MESSAGE,
                                     notificationReceiverHerId = 8142520,
                                     notificationTriggeredByHerId = 8142519,
                                     description = "A new message is available for download.",
-                                    createdAt = "2026-05-08T08:32:15.31+00:00",
+                                    createdAt = Instant.parse("2026-05-08T08:32:15.31+00:00"),
                                     offset = 45460
                                 )
                             )
@@ -168,7 +171,7 @@ object MessagesApiV3 {
                 }
             }
 
-            queryParameter<Int>("offset") {
+            queryParameter<Long>("offset") {
                 description = "Last successfully processed offset (>= 0). Offsets may have gaps. Starts at the end of the stream if omitted."
                 required = false
 
@@ -365,11 +368,11 @@ object MessagesApiV3 {
                 body<GetMessageResponse> {
                     example("Message metadata") {
                         value = GetMessageResponse(
-                            id = "733be787-0ad0-475a-98b7-00512caa9ccb",
+                            id = Uuid.parse("733be787-0ad0-475a-98b7-00512caa9ccb"),
                             senderHerId = 8142519,
                             receiverHerIds = listOf(8142520),
                             businessDocumentId = "cc169595-bbf0-11dd-9ca9-117f241b4a68",
-                            businessDocumentGenDate = "2026-05-08T08:32:15",
+                            businessDocumentGenDate = Instant.parse("2026-05-08T08:32:15+02:00"),
                             businessDocumentMsgType = "DIALOG_HELSEFAGLIG",
                             contentType = "application/xml"
                         )
@@ -960,7 +963,7 @@ object MessagesApiV3 {
                     example("Connection check") {
                         value = PingResponse(
                             response = "Pong",
-                            timestampUtc = "2026-05-08T08:32:15Z"
+                            timestampUtc = Instant.parse("2026-05-08T08:32:15Z")
                         )
                     }
                 }

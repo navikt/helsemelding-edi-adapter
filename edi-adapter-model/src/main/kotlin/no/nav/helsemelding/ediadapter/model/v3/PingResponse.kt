@@ -1,6 +1,7 @@
 package no.nav.helsemelding.ediadapter.model.v3
 
 import kotlinx.serialization.Serializable
+import kotlin.time.Instant
 
 /**
  * Result of a connection check against the message handler.
@@ -11,5 +12,5 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class PingResponse(
     val response: String,
-    val timestampUtc: String? = null
+    val timestampUtc: Instant? = null
 )
