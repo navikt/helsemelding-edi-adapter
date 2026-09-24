@@ -54,6 +54,7 @@ import no.nav.helsemelding.ediadapter.server.config
 import no.nav.helsemelding.ediadapter.server.model.PostMessageRequest
 import java.io.IOException
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.uuid.Uuid
 import io.ktor.http.HttpHeaders.ContentType as ContentTypeHeader
 import kotlinx.serialization.json.Json as JsonUtil
 
@@ -397,6 +398,7 @@ class RoutesV3Spec : StringSpec(
         }
 
         "GET /messages/{id}/status returns EDI response" {
+            val appRecId = "68e60a2b-5990-408c-b99b-089d8657d6ed"
             val payload =
                 """{
                     "statusList": [
@@ -411,7 +413,8 @@ class RoutesV3Spec : StringSpec(
                                         "errorCode": "E10",
                                         "details": null
                                     }
-                                ]
+                                ],
+                                "appRecId": "$appRecId"
                             }
                         }
                     ]
@@ -431,7 +434,9 @@ class RoutesV3Spec : StringSpec(
 
                 response.status shouldBe OK
                 response.bodyAsText() shouldBe payload
-                response.body<GetStatusResponse>().statusList?.single()?.sent shouldBe true
+                val status = response.body<GetStatusResponse>().statusList?.single()
+                status!!.sent shouldBe true
+                status.apprecInfo!!.appRecId shouldBe Uuid.parse(appRecId)
             }
         }
 

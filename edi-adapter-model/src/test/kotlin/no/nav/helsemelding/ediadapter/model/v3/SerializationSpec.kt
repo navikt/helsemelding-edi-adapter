@@ -24,7 +24,11 @@ class SerializationSpec : StringSpec(
 
         "ApprecInfo serializes and deserializes all fields" {
             assertSerialization(
-                ApprecInfo(AppRecStatus.REJECTED, listOf(AppRecError("E10", "Invalid document"))),
+                ApprecInfo(
+                    appRecStatus = AppRecStatus.REJECTED,
+                    appRecErrorList = listOf(AppRecError("E10", "Invalid document")),
+                    appRecId = Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9")
+                ),
                 """
                 {
                   "appRecStatus": "Rejected",
@@ -33,7 +37,8 @@ class SerializationSpec : StringSpec(
                       "errorCode": "E10",
                       "details": "Invalid document"
                     }
-                  ]
+                  ],
+                  "appRecId": "17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"
                 }
                 """
             )
@@ -445,7 +450,8 @@ class SerializationSpec : StringSpec(
                 """
                 {
                   "appRecStatus": null,
-                  "appRecErrorList": null
+                  "appRecErrorList": null,
+                  "appRecId": null
                 }
                 """
             ) shouldBe expected

@@ -549,7 +549,10 @@ object MessagesApiV3 {
                                     receiverHerId = 8142520,
                                     transportDeliveryState = DeliveryState.ACKNOWLEDGED,
                                     sent = true,
-                                    apprecInfo = ApprecInfo(appRecStatus = AppRecStatus.OK)
+                                    apprecInfo = ApprecInfo(
+                                        appRecStatus = AppRecStatus.OK,
+                                        appRecId = Uuid.parse("68e60a2b-5990-408c-b99b-089d8657d6ed")
+                                    )
                                 )
                             )
                         )
