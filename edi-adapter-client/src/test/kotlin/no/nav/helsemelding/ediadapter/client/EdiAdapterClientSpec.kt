@@ -23,6 +23,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import no.nav.helsemelding.ediadapter.model.common.GetBusinessDocumentResponse
 import no.nav.helsemelding.ediadapter.model.v3.AppRecStatus
+import no.nav.helsemelding.ediadapter.model.v3.ApprecInfo
+import no.nav.helsemelding.ediadapter.model.v3.DeliveryState
 import no.nav.helsemelding.ediadapter.model.v3.GetMessageResponse
 import no.nav.helsemelding.ediadapter.model.v3.GetNotificationsResponse
 import no.nav.helsemelding.ediadapter.model.v3.GetStatusResponse
@@ -38,6 +40,7 @@ import no.nav.helsemelding.ediadapter.model.v3.PostMessageRequest
 import no.nav.helsemelding.ediadapter.model.v3.PostMessageResponse
 import no.nav.helsemelding.ediadapter.model.v3.ReceiveNotificationChannel
 import no.nav.helsemelding.ediadapter.model.v3.SetMshConfigurationsRequest
+import no.nav.helsemelding.ediadapter.model.v3.StatusInfo
 import java.io.IOException
 import kotlin.uuid.Uuid
 
@@ -106,11 +109,41 @@ class EdiAdapterClientSpec : StringSpec(
         }
 
         "getMessageStatus returns V3 status information" {
-            val expected = GetStatusResponse(emptyList())
+            val appRecId = Uuid.parse("68e60a2b-5990-408c-b99b-089d8657d6ed")
+            val expected = GetStatusResponse(
+                statusList = listOf(
+                    StatusInfo(
+                        receiverHerId = 456,
+                        transportDeliveryState = DeliveryState.ACKNOWLEDGED,
+                        sent = true,
+                        apprecInfo = ApprecInfo(
+                            appRecStatus = AppRecStatus.OK,
+                            appRecId = appRecId
+                        )
+                    )
+                )
+            )
             withClient({ request ->
                 request.method shouldBe HttpMethod.Get
                 request.url.fullPath shouldBe "/api/v3/messages/$id/status"
-                respondJson(expected)
+                respond(
+                    """
+                    {
+                      "statusList": [
+                        {
+                          "receiverHerId": 456,
+                          "transportDeliveryState": "Acknowledged",
+                          "sent": true,
+                          "apprecInfo": {
+                            "appRecStatus": "Ok",
+                            "appRecId": "$appRecId"
+                          }
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
             }) { client -> client.getMessageStatus(id).shouldBeRight(expected) }
         }
 
