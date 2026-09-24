@@ -435,8 +435,8 @@ class RoutesV3Spec : StringSpec(
                 response.status shouldBe OK
                 response.bodyAsText() shouldBe payload
                 val status = response.body<GetStatusResponse>().statusList?.single()
-                status?.sent shouldBe true
-                status?.apprecInfo?.appRecId shouldBe Uuid.parse(appRecId)
+                status!!.sent shouldBe true
+                status.apprecInfo!!.appRecId shouldBe Uuid.parse(appRecId)
             }
         }
 
