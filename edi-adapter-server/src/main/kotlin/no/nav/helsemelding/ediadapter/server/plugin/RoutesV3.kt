@@ -16,6 +16,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.server.request.receive
 import io.ktor.server.routing.Route
+import no.nav.helsemelding.ediadapter.model.v3.DeleteNotificationsRequest
 import no.nav.helsemelding.ediadapter.model.v3.MarkAsDownloadedRequest
 import no.nav.helsemelding.ediadapter.model.v3.PostAppRecRequest
 import no.nav.helsemelding.ediadapter.model.v3.PostMessageRequest
@@ -25,30 +26,72 @@ import no.nav.helsemelding.ediadapter.server.herIds
 import no.nav.helsemelding.ediadapter.server.messageId
 import no.nav.helsemelding.ediadapter.server.notificationParameters
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.DELETE_MSH_CONFIGURATIONS
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.DELETE_NOTIFICATIONS
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.GET_DOCUMENT
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.GET_MESSAGE
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.GET_NOTIFICATIONS
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.GET_STATUS
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.GET_UNREAD_NOTIFICATIONS
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.MARK_DOWNLOADED
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.PING
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.POST_APPREC
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.POST_MESSAGE
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.SET_MSH_CONFIGURATIONS
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.STREAM_NOTIFICATIONS
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.STREAM_UNREAD_NOTIFICATIONS
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.deleteMshConfigurationsDocs
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.deleteNotificationsDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.getDocumentDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.getMessageDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.getNotificationsDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.getStatusDocs
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.getUnreadNotificationsDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.markDownloadedDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.pingDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.postApprecDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.postMessageDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.setMshConfigurationsDocs
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.streamNotificationsDocs
+import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.streamUnreadNotificationsDocs
+import no.nav.helsemelding.ediadapter.server.unreadNotificationParameters
+import no.nav.helsemelding.ediadapter.server.validateDeleteNotifications
 import no.nav.helsemelding.ediadapter.server.model.PostMessageRequest as InternalPostMessageRequest
 
 internal fun Route.v3Routes(ediClient: HttpClient) {
+    post(DELETE_NOTIFICATIONS, deleteNotificationsDocs) {
+        handleV3Request(
+            {
+                val request = call.receive<DeleteNotificationsRequest>()
+                validateDeleteNotifications(request)
+                ediClient.post("notifications/delete") {
+                    contentType(ContentType.Application.Json)
+                    setBody(request)
+                }
+            }
+        )
+    }
+
+    get(GET_UNREAD_NOTIFICATIONS, getUnreadNotificationsDocs) {
+        handleV3Request(
+            {
+                val params = unreadNotificationParameters(call)
+                ediClient.get("notifications/unread") { url { parameters.appendAll(params) } }
+            }
+        )
+    }
+
+    get(STREAM_UNREAD_NOTIFICATIONS, streamUnreadNotificationsDocs) {
+        handleV3Stream(
+            {
+                val params = unreadNotificationParameters(call, stream = true)
+                ediClient.prepareGet("notifications/unread/stream") {
+                    accept(ContentType.Text.EventStream)
+                    url { parameters.appendAll(params) }
+                }
+            }
+        )
+    }
+
     get(GET_NOTIFICATIONS, getNotificationsDocs) {
         handleV3Request(
             {

@@ -15,10 +15,12 @@ import io.ktor.http.HttpStatusCode.Companion.UnsupportedMediaType
 import no.nav.helsemelding.ediadapter.model.common.GetBusinessDocumentResponse
 import no.nav.helsemelding.ediadapter.model.v3.AppRecStatus
 import no.nav.helsemelding.ediadapter.model.v3.ApprecInfo
+import no.nav.helsemelding.ediadapter.model.v3.DeleteNotificationsRequest
 import no.nav.helsemelding.ediadapter.model.v3.DeliveryState
 import no.nav.helsemelding.ediadapter.model.v3.GetMessageResponse
 import no.nav.helsemelding.ediadapter.model.v3.GetNotificationsResponse
 import no.nav.helsemelding.ediadapter.model.v3.GetStatusResponse
+import no.nav.helsemelding.ediadapter.model.v3.GetUnreadNotificationsResponse
 import no.nav.helsemelding.ediadapter.model.v3.MarkAsDownloadedRequest
 import no.nav.helsemelding.ediadapter.model.v3.MshApiProblemDetails
 import no.nav.helsemelding.ediadapter.model.v3.MshConfiguration
@@ -32,10 +34,260 @@ import no.nav.helsemelding.ediadapter.model.v3.PostMessageResponse
 import no.nav.helsemelding.ediadapter.model.v3.ReceiveNotificationChannel
 import no.nav.helsemelding.ediadapter.model.v3.SetMshConfigurationsRequest
 import no.nav.helsemelding.ediadapter.model.v3.StatusInfo
+import no.nav.helsemelding.ediadapter.model.v3.UnreadNotification
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 object MessagesApiV3 {
+
+    /* =============================================================
+     * GET /notifications/unread
+     * ============================================================= */
+
+    const val GET_UNREAD_NOTIFICATIONS = "/notifications/unread"
+
+    val getUnreadNotificationsDocs: RouteConfig.() -> Unit = {
+        summary = "Get unread notifications"
+        description = "Returns unread notifications for the supplied HER IDs without an offset."
+        tags = listOf("V3")
+
+        request {
+            queryParameter<List<Int>>("herIds") {
+                description = "One to 1500 unique HER IDs. Repeat the parameter for multiple IDs."
+                required = true
+
+                example("Multiple HER IDs") {
+                    value = listOf(8142520, 8142521)
+                }
+            }
+
+            queryParameter<Int>("notificationsToFetch") {
+                description = "Number of notifications to fetch (1–1000, default: 100)."
+                required = false
+
+                example("Default page size") {
+                    value = 100
+                }
+            }
+        }
+
+        response {
+            OK to {
+                description = "Notifications retrieved successfully"
+
+                body<GetUnreadNotificationsResponse> {
+                    example("Notifications") {
+                        value = GetUnreadNotificationsResponse(
+                            unreadNotifications = listOf(
+                                UnreadNotification(
+                                    notificationId = Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"),
+                                    relatedMessageId = Uuid.parse("733be787-0ad0-475a-98b7-00512caa9ccb"),
+                                    type = NotificationType.NEW_MESSAGE,
+                                    notificationReceiverHerId = 8142520,
+                                    notificationTriggeredByHerId = 8142519,
+                                    description = "A new message is available for download.",
+                                    createdAt = Instant.parse("2026-05-08T08:32:15.31+00:00")
+                                )
+                            )
+                        )
+                    }
+                }
+            }
+
+            BadRequest to {
+                description = "Invalid request parameters or body"
+
+                body<MshApiProblemDetails> {
+                    example("Invalid request") {
+                        value = MshApiProblemDetails(
+                            title = "Bad Request",
+                            status = 400,
+                            detail = "Invalid request parameters or body",
+                            instance = "/api/v3/notifications/unread",
+                            errorCode = 400,
+                            requestId = "example-request-id"
+                        )
+                    }
+                }
+            }
+
+            Unauthorized to {
+                description = "Authentication required or credentials invalid"
+                body<MshApiProblemDetails>()
+            }
+
+            Forbidden to {
+                description = "Access to the requested operation is denied"
+                body<MshApiProblemDetails>()
+            }
+
+            Locked to {
+                description = "The HER ID is locked to another client"
+                body<MshApiProblemDetails>()
+            }
+
+            InternalServerError to {
+                description = "Unexpected server error"
+                body<MshApiProblemDetails>()
+            }
+        }
+    }
+
+    /* =============================================================
+     * GET /notifications/unread/stream
+     * ============================================================= */
+
+    const val STREAM_UNREAD_NOTIFICATIONS = "/notifications/unread/stream"
+
+    val streamUnreadNotificationsDocs: RouteConfig.() -> Unit = {
+        summary = "Stream unread notifications using SSE"
+        description = "Forwards unread notification events as they arrive. No offset is required."
+        tags = listOf("V3")
+
+        request {
+            queryParameter<List<Int>>("herIds") {
+                description = "One to 1500 unique HER IDs. Repeat the parameter for multiple IDs."
+                required = true
+
+                example("Multiple HER IDs") {
+                    value = listOf(8142520, 8142521)
+                }
+            }
+        }
+
+        response {
+            OK to {
+                description = "Unread notification stream established; errors after streaming starts close the stream"
+                body<String> {
+                    mediaTypes(ContentType.Text.EventStream)
+                    description = "SSE events; notification events contain a V3 UnreadNotification in the data field."
+                    example("Unread notification stream") {
+                        value = """
+                            event: connected
+                            data:
+
+                            event: notification
+                            data: {"notificationId":"17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9","type":"NewMessage","notificationReceiverHerId":8142520}
+
+                        """.trimIndent() + "\n\n"
+                    }
+                }
+            }
+
+            BadRequest to {
+                description = "Invalid request parameters or body"
+
+                body<MshApiProblemDetails> {
+                    example("Invalid request") {
+                        value = MshApiProblemDetails(
+                            title = "Bad Request",
+                            status = 400,
+                            detail = "Invalid request parameters or body",
+                            instance = "/api/v3/notifications/unread/stream",
+                            errorCode = 400,
+                            requestId = "example-request-id"
+                        )
+                    }
+                }
+            }
+
+            Unauthorized to {
+                description = "Authentication required or credentials invalid"
+                body<MshApiProblemDetails>()
+            }
+
+            Forbidden to {
+                description = "Access to the requested operation is denied"
+                body<MshApiProblemDetails>()
+            }
+
+            Locked to {
+                description = "The HER ID is locked to another client"
+                body<MshApiProblemDetails>()
+            }
+
+            InternalServerError to {
+                description = "Unexpected server error"
+                body<MshApiProblemDetails>()
+            }
+        }
+    }
+
+    /* =============================================================
+     * POST /notifications/delete
+     * ============================================================= */
+
+    const val DELETE_NOTIFICATIONS = "/notifications/delete"
+
+    val deleteNotificationsDocs: RouteConfig.() -> Unit = {
+        summary = "Delete notifications"
+        description = "Deletes notifications after they have been read and processed."
+        tags = listOf("V3")
+
+        request {
+            body<DeleteNotificationsRequest> {
+                required = true
+                description = "Notification IDs to delete, with at most 1000 unique IDs."
+
+                example("Processed notifications") {
+                    value = DeleteNotificationsRequest(
+                        notificationIds = listOf(
+                            Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"),
+                            Uuid.parse("c5e6b600-78ef-4d2a-ad5e-e4b64e3f5230")
+                        )
+                    )
+                }
+            }
+        }
+
+        response {
+            NoContent to {
+                description = "Notifications deleted successfully"
+            }
+
+            BadRequest to {
+                description = "Invalid request parameters or body"
+
+                body<MshApiProblemDetails> {
+                    example("Invalid request") {
+                        value = MshApiProblemDetails(
+                            title = "Bad Request",
+                            status = 400,
+                            detail = "Invalid request parameters or body",
+                            instance = "/api/v3/notifications/delete",
+                            errorCode = 400,
+                            requestId = "example-request-id"
+                        )
+                    }
+                }
+            }
+
+            Unauthorized to {
+                description = "Authentication required or credentials invalid"
+                body<MshApiProblemDetails>()
+            }
+
+            Forbidden to {
+                description = "Access to the requested operation is denied"
+                body<MshApiProblemDetails>()
+            }
+
+            Locked to {
+                description = "The HER ID is locked to another client"
+                body<MshApiProblemDetails>()
+            }
+
+            InternalServerError to {
+                description = "Unexpected server error"
+                body<MshApiProblemDetails>()
+            }
+
+            UnsupportedMediaType to {
+                description = "Unsupported request content type"
+                body<MshApiProblemDetails>()
+            }
+        }
+    }
 
     /* =============================================================
      * GET /notifications

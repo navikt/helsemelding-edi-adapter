@@ -28,6 +28,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import no.nav.helsemelding.ediadapter.model.v3.Notification
 import no.nav.helsemelding.ediadapter.model.v3.NotificationType
+import no.nav.helsemelding.ediadapter.model.v3.UnreadNotification
 import java.io.IOException
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.uuid.Uuid
@@ -444,6 +445,195 @@ class NotificationStreamSpec : StringSpec(
                 }
             }
         }
+        "streamUnreadNotifications parses multiline data and ignores connected events and comments" {
+            testApplication {
+                application {
+                    routing {
+                        get("/api/v3/notifications/unread/stream") {
+                            call.request.queryParameters.getAll("herIds") shouldBe listOf("123", "456")
+                            call.request.queryParameters["offset"] shouldBe null
+                            call.respondText(
+                                """
+                                : heartbeat
+
+                                event: connected
+                                data:
+
+                                event: notification
+                                data: {"notificationId":"17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9","type":"NewMessage",
+                                data: "notificationReceiverHerId":123}
+
+                                """.trimIndent() + "\n",
+                                ContentType.Text.EventStream
+                            )
+                        }
+                    }
+                }
+                HttpEdiAdapterClient({ streamingClient() }, "http://localhost").use { client ->
+                    withTimeout(5000.milliseconds) {
+                        client.streamUnreadNotifications(listOf(123, 456)).first()
+                    }
+                        .shouldBeRight(unreadNotification())
+                }
+            }
+        }
+
+        "streamUnreadNotifications retries after a temporary upstream error" {
+            testApplication {
+                var attempts = 0
+                application {
+                    routing {
+                        get("/api/v3/notifications/unread/stream") {
+                            attempts++
+                            if (attempts == 1) {
+                                call.respond(HttpStatusCode.ServiceUnavailable)
+                            } else {
+                                call.respondText(unreadEvent(), ContentType.Text.EventStream)
+                            }
+                        }
+                    }
+                }
+                HttpEdiAdapterClient({ streamingClient() }, "http://localhost").use { client ->
+                    withTimeout(5000.milliseconds) {
+                        client.streamUnreadNotifications(123).first()
+                    }
+                        .shouldBeRight(unreadNotification())
+                    attempts shouldBe 2
+                }
+            }
+        }
+
+        "streamUnreadNotifications ends with a typed error when access is denied" {
+            testApplication {
+                var attempts = 0
+                application {
+                    routing {
+                        get("/api/v3/notifications/unread/stream") {
+                            attempts++
+                            call.respondText(
+                                """
+                                {
+                                  "status": 403,
+                                  "title": "Forbidden"
+                                }
+                                """.trimIndent(),
+                                ContentType.parse("application/problem+json"),
+                                HttpStatusCode.Forbidden
+                            )
+                        }
+                    }
+                }
+                HttpEdiAdapterClient({ streamingClient() }, "http://localhost").use { client ->
+                    val results =
+                        withTimeout(5000.milliseconds) { client.streamUnreadNotifications(123).toList() }
+                    val error = results.single().shouldBeLeft().shouldBeInstanceOf<EdiAdapterError.Api>()
+                    error.status shouldBe 403
+                    error.problem?.title shouldBe "Forbidden"
+                    attempts shouldBe 1
+                }
+            }
+        }
+
+        "streamUnreadNotifications ends with a decoding error for invalid notification data" {
+            testApplication {
+                var attempts = 0
+                application {
+                    routing {
+                        get("/api/v3/notifications/unread/stream") {
+                            attempts++
+                            call.respondText(
+                                """
+                                event: notification
+                                data: invalid
+
+                                """.trimIndent() + "\n",
+                                ContentType.Text.EventStream
+                            )
+                        }
+                    }
+                }
+                HttpEdiAdapterClient({ streamingClient() }, "http://localhost").use { client ->
+                    val results =
+                        withTimeout(5000.milliseconds) { client.streamUnreadNotifications(123).toList() }
+                    results.single().shouldBeLeft().shouldBeInstanceOf<EdiAdapterError.Decoding>()
+                    attempts shouldBe 1
+                }
+            }
+        }
+
+        "streamUnreadNotifications closes the connection when collection stops" {
+            testApplication {
+                val closed = CompletableDeferred<Unit>()
+                application {
+                    routing {
+                        get("/api/v3/notifications/unread/stream") {
+                            call.respondTextWriter(ContentType.Text.EventStream) {
+                                try {
+                                    write(unreadEvent())
+                                    flush()
+                                    while (true) {
+                                        delay(10.milliseconds)
+                                        write(": heartbeat\n\n")
+                                        flush()
+                                    }
+                                } finally {
+                                    closed.complete(Unit)
+                                }
+                            }
+                        }
+                    }
+                }
+                HttpEdiAdapterClient({ streamingClient() }, "http://localhost").use { client ->
+                    withTimeout(5000.milliseconds) {
+                        client.streamUnreadNotifications(123).first().shouldBeRight(unreadNotification())
+                        closed.await()
+                    }
+                }
+            }
+        }
+
+        "streamUnreadNotifications treats HTTP 204 as the end of the stream" {
+            testApplication {
+                application {
+                    routing {
+                        get("/api/v3/notifications/unread/stream") {
+                            call.request.queryParameters["offset"] shouldBe null
+                            call.respond(HttpStatusCode.NoContent)
+                        }
+                    }
+                }
+                HttpEdiAdapterClient({ streamingClient() }, "http://localhost").use { client ->
+                    withTimeout(5000.milliseconds) {
+                        client.streamUnreadNotifications(listOf(123)).toList()
+                    } shouldBe emptyList()
+                }
+            }
+        }
+
+        "streamUnreadNotifications reconnects after EOF without an offset" {
+            testApplication {
+                var attempts = 0
+                application {
+                    routing {
+                        get("/api/v3/notifications/unread/stream") {
+                            attempts++
+                            call.request.queryParameters.getAll("herIds") shouldBe listOf("123", "456")
+                            call.request.queryParameters["offset"] shouldBe null
+                            call.respondText(unreadEvent(), ContentType.Text.EventStream)
+                        }
+                    }
+                }
+                HttpEdiAdapterClient({ streamingClient() }, "http://localhost").use { client ->
+                    val stream = client.streamUnreadNotifications(listOf(123, 456))
+                    attempts shouldBe 0
+                    val notifications = withTimeout(5000.milliseconds) {
+                        stream.take(2).toList()
+                    }
+                    notifications.map { it.shouldBeRight() } shouldBe listOf(unreadNotification(), unreadNotification())
+                    attempts shouldBe 2
+                }
+            }
+        }
     }
 )
 
@@ -460,3 +650,11 @@ private fun ApplicationTestBuilder.streamingClient() = createClient {
     expectSuccess = false
     install(SSE) { maxReconnectionAttempts = 0 }
 }
+
+private fun unreadNotification() = UnreadNotification(
+    notificationId = Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"),
+    type = NotificationType.NEW_MESSAGE,
+    notificationReceiverHerId = 123
+)
+
+private fun unreadEvent() = "event: notification\ndata: ${Json.encodeToString(unreadNotification())}\n\n"

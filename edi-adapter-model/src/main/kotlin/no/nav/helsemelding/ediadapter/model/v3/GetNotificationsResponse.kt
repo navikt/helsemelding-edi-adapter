@@ -10,6 +10,10 @@ import kotlinx.serialization.Serializable
  * @property notifications Notifications returned for the requested HER IDs and offset. An empty list means
  *     this response contains no notifications.
  */
+@Deprecated(
+    message = "GetNotificationsResponse is deprecated and may be discontinued in a future release. " +
+        "Use GetUnreadNotificationsResponse instead for unread notifications without an offset."
+)
 @Serializable
 data class GetNotificationsResponse(
     val notifications: List<Notification>

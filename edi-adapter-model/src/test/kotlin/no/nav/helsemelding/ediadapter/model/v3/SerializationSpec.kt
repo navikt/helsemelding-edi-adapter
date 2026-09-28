@@ -196,6 +196,93 @@ class SerializationSpec : StringSpec(
             )
         }
 
+        "UnreadNotification serializes and deserializes all fields" {
+            assertSerialization(
+                UnreadNotification(
+                    notificationId = Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"),
+                    relatedMessageId = Uuid.parse("733be787-0ad0-475a-98b7-00512caa9ccb"),
+                    type = NotificationType.NEW_MESSAGE,
+                    notificationReceiverHerId = 456,
+                    notificationTriggeredByHerId = 123,
+                    description = "New message received",
+                    createdAt = Instant.parse("2026-05-08T08:32:15.310Z")
+                ),
+                """
+                {
+                  "notificationId": "17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9",
+                  "relatedMessageId": "733be787-0ad0-475a-98b7-00512caa9ccb",
+                  "type": "NewMessage",
+                  "notificationReceiverHerId": 456,
+                  "notificationTriggeredByHerId": 123,
+                  "description": "New message received",
+                  "createdAt": "2026-05-08T08:32:15.310Z"
+                }
+                """
+            )
+        }
+
+        "DeleteNotificationsRequest serializes and deserializes all fields" {
+            assertSerialization(
+                DeleteNotificationsRequest(
+                    listOf(
+                        Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"),
+                        Uuid.parse("c5e6b600-78ef-4d2a-ad5e-e4b64e3f5230")
+                    )
+                ),
+                """
+                {
+                  "notificationIds": [
+                    "17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9",
+                    "c5e6b600-78ef-4d2a-ad5e-e4b64e3f5230"
+                  ]
+                }
+                """
+            )
+        }
+
+        "DeleteNotificationsRequest serializes and deserializes an empty list" {
+            assertSerialization(
+                DeleteNotificationsRequest(emptyList()),
+                """
+                {
+                  "notificationIds": []
+                }
+                """
+            )
+        }
+
+        "GetUnreadNotificationsResponse serializes and deserializes all fields" {
+            assertSerialization(
+                GetUnreadNotificationsResponse(
+                    listOf(
+                        UnreadNotification(notificationId = Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"), type = NotificationType.NEW_MESSAGE, notificationReceiverHerId = 456)
+                    )
+                ),
+                """
+                {
+                  "unreadNotifications": [
+                    {
+                      "notificationId": "17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9",
+                      "type": "NewMessage",
+                      "notificationReceiverHerId": 456
+                    }
+                  ]
+                }
+                """
+            )
+        }
+
+        "GetUnreadNotificationsResponse serializes and deserializes an empty list" {
+            assertSerialization(
+                GetUnreadNotificationsResponse(emptyList()),
+                """
+                {
+                  "unreadNotifications": []
+                }
+                """
+            )
+        }
+
         "StatusInfo serializes and deserializes all fields" {
             assertSerialization(
                 StatusInfo(456, DeliveryState.ACKNOWLEDGED, true, ApprecInfo(AppRecStatus.OK)),
@@ -622,6 +709,33 @@ class SerializationSpec : StringSpec(
                   "type": "NewMessage",
                   "notificationReceiverHerId": 456,
                   "offset": 0,
+                  "relatedMessageId": null,
+                  "notificationTriggeredByHerId": null,
+                  "description": null,
+                  "createdAt": null
+                }
+                """
+            ) shouldBe expected
+        }
+
+        "UnreadNotification preserves nullable and default fields" {
+            val expected = UnreadNotification(notificationId = Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"), type = NotificationType.NEW_MESSAGE, notificationReceiverHerId = 456)
+            assertSerialization(
+                expected,
+                """
+                {
+                  "notificationId": "17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9",
+                  "type": "NewMessage",
+                  "notificationReceiverHerId": 456
+                }
+                """
+            )
+            Json.decodeFromString<UnreadNotification>(
+                """
+                {
+                  "notificationId": "17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9",
+                  "type": "NewMessage",
+                  "notificationReceiverHerId": 456,
                   "relatedMessageId": null,
                   "notificationTriggeredByHerId": null,
                   "description": null,
