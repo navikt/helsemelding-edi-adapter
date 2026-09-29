@@ -71,7 +71,7 @@ class EdiAdapterClientSpec : StringSpec(
             }
         }
 
-        "getNotifications omits the default page size" {
+        "getNotifications without notifications to fetch omits the query parameter" {
             withClient({ request ->
                 request.url.fullPath shouldBe "/api/v3/notifications?herIds=123&offset=0"
                 respondJson(GetNotificationsResponse(emptyList()))
@@ -104,7 +104,7 @@ class EdiAdapterClientSpec : StringSpec(
             }
         }
 
-        "getUnreadNotifications omits the default page size" {
+        "getUnreadNotifications without notifications to fetch omits the query parameter" {
             withClient({ request ->
                 request.url.fullPath shouldBe "/api/v3/notifications/unread?herIds=123"
                 respondJson(GetUnreadNotificationsResponse(emptyList()))
@@ -122,7 +122,7 @@ class EdiAdapterClientSpec : StringSpec(
             }
         }
 
-        "getUnreadNotifications with a single her id omits the default page size" {
+        "getUnreadNotifications with a single her id and without notifications to fetch omits the query parameter" {
             withClient({ request ->
                 request.url.fullPath shouldBe "/api/v3/notifications/unread?herIds=123"
                 respondJson(GetUnreadNotificationsResponse(emptyList()))
