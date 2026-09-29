@@ -5,10 +5,10 @@ import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 /**
- * A message event received through polling or the `data` field of an SSE notification event.
+ * An unread message event received through polling or the `data` field of an SSE notification event.
  *
- * Offsets are global, so gaps between notifications are expected. Persist the offset after successful
- * processing to resume without skipping unprocessed notifications.
+ * Unread notifications do not carry an offset. The unread polling and streaming endpoints select
+ * notifications by HER ID without requiring an offset for subsequent requests or stream reconnection.
  *
  * @property notificationId Unique identifier of this notification.
  * @property relatedMessageId Identifier of the associated message, usable with the message endpoints.
@@ -17,21 +17,14 @@ import kotlin.uuid.Uuid
  * @property notificationTriggeredByHerId HER ID of the party whose action caused the event, when supplied.
  * @property description Human-readable explanation of the event.
  * @property createdAt Instant when the notification was created.
- * @property offset Global notification position used as the offset for subsequent polling or stream
- *     reconnection.
  */
-@Deprecated(
-    message = "Notification is deprecated and may be discontinued in a future release. " +
-        "Use UnreadNotification instead for unread notifications without an offset."
-)
 @Serializable
-data class Notification(
+data class UnreadNotification(
     val notificationId: Uuid,
     val relatedMessageId: Uuid? = null,
     val type: NotificationType,
     val notificationReceiverHerId: Int,
     val notificationTriggeredByHerId: Int? = null,
     val description: String? = null,
-    val createdAt: Instant? = null,
-    val offset: Long
+    val createdAt: Instant? = null
 )

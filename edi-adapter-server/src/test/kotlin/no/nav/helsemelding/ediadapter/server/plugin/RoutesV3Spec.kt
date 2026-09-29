@@ -25,6 +25,7 @@ import io.ktor.http.HttpStatusCode.Companion.Locked
 import io.ktor.http.HttpStatusCode.Companion.NoContent
 import io.ktor.http.HttpStatusCode.Companion.NotFound
 import io.ktor.http.HttpStatusCode.Companion.OK
+import io.ktor.http.HttpStatusCode.Companion.Unauthorized
 import io.ktor.http.HttpStatusCode.Companion.UnsupportedMediaType
 import io.ktor.http.content.TextContent
 import io.ktor.http.contentType
@@ -43,8 +44,10 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import no.nav.helsemelding.ediadapter.model.v3.DeleteNotificationsRequest
 import no.nav.helsemelding.ediadapter.model.v3.GetNotificationsResponse
 import no.nav.helsemelding.ediadapter.model.v3.GetStatusResponse
+import no.nav.helsemelding.ediadapter.model.v3.GetUnreadNotificationsResponse
 import no.nav.helsemelding.ediadapter.model.v3.MarkAsDownloadedRequest
 import no.nav.helsemelding.ediadapter.model.v3.MessageTransportMetadataOverrides
 import no.nav.helsemelding.ediadapter.model.v3.MshApiProblemDetails
@@ -343,6 +346,1025 @@ class RoutesV3Spec : StringSpec(
                 val response = client.get("$ROOT_V3/notifications?$query&offset=0")
 
                 response.status shouldBe BadRequest
+            }
+        }
+
+        "GET /notifications/unread without notifications to fetch returns 200" {
+            val payload =
+                """{
+                    "unreadNotifications": [
+                        {
+                            "notificationId": "17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9",
+                            "type": "NewMessage",
+                            "notificationReceiverHerId": 42
+                        }
+                    ]
+                }"""
+
+            val ediClientV3 = fakeEdiClient { request ->
+                request.url.fullPath shouldBe "/notifications/unread?HerIds=42&HerIds=1337"
+                request.method shouldBe HttpMethod.Get
+                respond(payload, headers = jsonHeaders)
+            }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V3/notifications/unread?herIds=42&herIds=1337")
+
+                response.status shouldBe OK
+                response.bodyAsText() shouldBe payload
+                val notification = response.body<GetUnreadNotificationsResponse>().unreadNotifications.single()
+
+                notification.notificationReceiverHerId shouldBe 42
+            }
+        }
+
+        "GET /notifications/unread with notifications to fetch (1) returns 200" {
+            val payload =
+                """{
+                    "unreadNotifications": [
+                        {
+                            "notificationId": "17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9",
+                            "type": "NewMessage",
+                            "notificationReceiverHerId": 42
+                        }
+                    ]
+                }"""
+
+            val ediClientV3 = fakeEdiClient { request ->
+                request.url.fullPath shouldBe "/notifications/unread?HerIds=42&HerIds=1337&NotificationsToFetch=1"
+                request.method shouldBe HttpMethod.Get
+                respond(payload, headers = jsonHeaders)
+            }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V3/notifications/unread?herIds=42&herIds=1337&notificationsToFetch=1")
+
+                response.status shouldBe OK
+                response.bodyAsText() shouldBe payload
+                val notification = response.body<GetUnreadNotificationsResponse>().unreadNotifications.single()
+
+                notification.notificationReceiverHerId shouldBe 42
+            }
+        }
+
+        "GET /notifications/unread with notifications to fetch (1000) returns 200" {
+            val payload =
+                """{
+                    "unreadNotifications": [
+                        {
+                            "notificationId": "17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9",
+                            "type": "NewMessage",
+                            "notificationReceiverHerId": 42
+                        }
+                    ]
+                }"""
+
+            val ediClientV3 = fakeEdiClient { request ->
+                request.url.fullPath shouldBe "/notifications/unread?HerIds=42&HerIds=1337&NotificationsToFetch=1000"
+                request.method shouldBe HttpMethod.Get
+                respond(payload, headers = jsonHeaders)
+            }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V3/notifications/unread?herIds=42&herIds=1337&notificationsToFetch=1000")
+
+                response.status shouldBe OK
+                response.bodyAsText() shouldBe payload
+                val notification = response.body<GetUnreadNotificationsResponse>().unreadNotifications.single()
+
+                notification.notificationReceiverHerId shouldBe 42
+            }
+        }
+
+        "GET /notifications/unread with no unread notifications returns 200" {
+            val payload = """{"unreadNotifications":[]}"""
+            val ediClientV3 = fakeEdiClient { respond(payload, headers = jsonHeaders) }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.get("$ROOT_V3/notifications/unread?herIds=42")
+
+                response.status shouldBe OK
+                response.bodyAsText() shouldBe payload
+            }
+        }
+
+        "GET /notifications/unread without her ids returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V3/notifications/unread?")
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/unread"
+            }
+        }
+
+        "GET /notifications/unread with blank her id returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V3/notifications/unread?herIds=")
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/unread"
+            }
+        }
+
+        "GET /notifications/unread with non-numeric her id returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V3/notifications/unread?herIds=invalid")
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/unread"
+            }
+        }
+
+        "GET /notifications/unread with her id exceeding Int range returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V3/notifications/unread?herIds=2147483648")
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/unread"
+            }
+        }
+
+        "GET /notifications/unread with duplicate her ids returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V3/notifications/unread?herIds=42&herIds=42")
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/unread"
+            }
+        }
+
+        "GET /notifications/unread with more than 1500 her ids returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V3/notifications/unread") {
+                    url { parameters.appendAll("herIds", (1..1501).map { it.toString() }) }
+                }
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/unread"
+            }
+        }
+
+        "GET /notifications/unread with 1500 her ids returns 200" {
+            val ediClientV3 = fakeEdiClient { request ->
+                request.url.parameters.getAll("HerIds") shouldBe (1..1500).map { it.toString() }
+                respond("""{"unreadNotifications":[]}""", headers = jsonHeaders)
+            }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.get("$ROOT_V3/notifications/unread") {
+                    url { parameters.appendAll("herIds", (1..1500).map { it.toString() }) }
+                }
+
+                response.status shouldBe OK
+            }
+        }
+
+        "GET /notifications/unread returns 400" {
+            val problem =
+                """{
+                    "title": "NHN error",
+                    "status": 400,
+                    "errorCode": 1210,
+                    "requestId": "nhn-request-id"
+                }"""
+
+            val ediClientV3 = fakeEdiClient { respond(problem, BadRequest, jsonHeaders) }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.get("$ROOT_V3/notifications/unread?herIds=42")
+
+                response.status shouldBe BadRequest
+                response.bodyAsText() shouldBe problem
+                response.contentType()?.withoutParameters() shouldBe Json
+            }
+        }
+
+        "GET /notifications/unread returns 401" {
+            val problem =
+                """{
+                    "title": "NHN error",
+                    "status": 401,
+                    "errorCode": 1210,
+                    "requestId": "nhn-request-id"
+                }"""
+
+            val ediClientV3 = fakeEdiClient { respond(problem, Unauthorized, jsonHeaders) }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.get("$ROOT_V3/notifications/unread?herIds=42")
+
+                response.status shouldBe Unauthorized
+                response.bodyAsText() shouldBe problem
+                response.contentType()?.withoutParameters() shouldBe Json
+            }
+        }
+
+        "GET /notifications/unread returns 403" {
+            val problem =
+                """{
+                    "title": "NHN error",
+                    "status": 403,
+                    "errorCode": 1210,
+                    "requestId": "nhn-request-id"
+                }"""
+
+            val ediClientV3 = fakeEdiClient { respond(problem, Forbidden, jsonHeaders) }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.get("$ROOT_V3/notifications/unread?herIds=42")
+
+                response.status shouldBe Forbidden
+                response.bodyAsText() shouldBe problem
+                response.contentType()?.withoutParameters() shouldBe Json
+            }
+        }
+
+        "GET /notifications/unread returns 423" {
+            val problem =
+                """{
+                    "title": "NHN error",
+                    "status": 423,
+                    "errorCode": 1210,
+                    "requestId": "nhn-request-id"
+                }"""
+
+            val ediClientV3 = fakeEdiClient { respond(problem, Locked, jsonHeaders) }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.get("$ROOT_V3/notifications/unread?herIds=42")
+
+                response.status shouldBe Locked
+                response.bodyAsText() shouldBe problem
+                response.contentType()?.withoutParameters() shouldBe Json
+            }
+        }
+
+        "GET /notifications/unread returns 500" {
+            val problem =
+                """{
+                    "title": "NHN error",
+                    "status": 500,
+                    "errorCode": 1210,
+                    "requestId": "nhn-request-id"
+                }"""
+
+            val ediClientV3 = fakeEdiClient { respond(problem, InternalServerError, jsonHeaders) }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.get("$ROOT_V3/notifications/unread?herIds=42")
+
+                response.status shouldBe InternalServerError
+                response.bodyAsText() shouldBe problem
+                response.contentType()?.withoutParameters() shouldBe Json
+            }
+        }
+
+        "GET /notifications/unread/stream without her ids returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V3/notifications/unread/stream?")
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/unread/stream"
+            }
+        }
+
+        "GET /notifications/unread/stream with blank her id returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V3/notifications/unread/stream?herIds=")
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/unread/stream"
+            }
+        }
+
+        "GET /notifications/unread/stream with non-numeric her id returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V3/notifications/unread/stream?herIds=invalid")
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/unread/stream"
+            }
+        }
+
+        "GET /notifications/unread/stream with her id exceeding Int range returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V3/notifications/unread/stream?herIds=2147483648")
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/unread/stream"
+            }
+        }
+
+        "GET /notifications/unread/stream with duplicate her ids returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V3/notifications/unread/stream?herIds=42&herIds=42")
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/unread/stream"
+            }
+        }
+
+        "GET /notifications/unread/stream with more than 1500 her ids returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V3/notifications/unread/stream") {
+                    url { parameters.appendAll("herIds", (1..1501).map { it.toString() }) }
+                }
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/unread/stream"
+            }
+        }
+
+        "GET /notifications/unread/stream with 1500 her ids returns 200" {
+            val ediClientV3 = fakeEdiClient { request ->
+                request.url.parameters.getAll("HerIds") shouldBe (1..1500).map { it.toString() }
+                respond("", headers = headersOf(ContentTypeHeader, "text/event-stream"))
+            }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.get("$ROOT_V3/notifications/unread/stream") {
+                    url { parameters.appendAll("herIds", (1..1500).map { it.toString() }) }
+                }
+
+                response.status shouldBe OK
+            }
+        }
+
+        "GET /notifications/unread/stream returns 400" {
+            val problem =
+                """{
+                    "title": "NHN error",
+                    "status": 400,
+                    "errorCode": 1210,
+                    "requestId": "nhn-request-id"
+                }"""
+
+            val ediClientV3 = fakeEdiClient { respond(problem, BadRequest, jsonHeaders) }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.get("$ROOT_V3/notifications/unread/stream?herIds=42")
+
+                response.status shouldBe BadRequest
+                response.bodyAsText() shouldBe problem
+                response.contentType()?.withoutParameters() shouldBe Json
+            }
+        }
+
+        "GET /notifications/unread/stream returns 401" {
+            val problem =
+                """{
+                    "title": "NHN error",
+                    "status": 401,
+                    "errorCode": 1210,
+                    "requestId": "nhn-request-id"
+                }"""
+
+            val ediClientV3 = fakeEdiClient { respond(problem, Unauthorized, jsonHeaders) }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.get("$ROOT_V3/notifications/unread/stream?herIds=42")
+
+                response.status shouldBe Unauthorized
+                response.bodyAsText() shouldBe problem
+                response.contentType()?.withoutParameters() shouldBe Json
+            }
+        }
+
+        "GET /notifications/unread/stream returns 403" {
+            val problem =
+                """{
+                    "title": "NHN error",
+                    "status": 403,
+                    "errorCode": 1210,
+                    "requestId": "nhn-request-id"
+                }"""
+
+            val ediClientV3 = fakeEdiClient { respond(problem, Forbidden, jsonHeaders) }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.get("$ROOT_V3/notifications/unread/stream?herIds=42")
+
+                response.status shouldBe Forbidden
+                response.bodyAsText() shouldBe problem
+                response.contentType()?.withoutParameters() shouldBe Json
+            }
+        }
+
+        "GET /notifications/unread/stream returns 423" {
+            val problem =
+                """{
+                    "title": "NHN error",
+                    "status": 423,
+                    "errorCode": 1210,
+                    "requestId": "nhn-request-id"
+                }"""
+
+            val ediClientV3 = fakeEdiClient { respond(problem, Locked, jsonHeaders) }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.get("$ROOT_V3/notifications/unread/stream?herIds=42")
+
+                response.status shouldBe Locked
+                response.bodyAsText() shouldBe problem
+                response.contentType()?.withoutParameters() shouldBe Json
+            }
+        }
+
+        "GET /notifications/unread/stream returns 500" {
+            val problem =
+                """{
+                    "title": "NHN error",
+                    "status": 500,
+                    "errorCode": 1210,
+                    "requestId": "nhn-request-id"
+                }"""
+
+            val ediClientV3 = fakeEdiClient { respond(problem, InternalServerError, jsonHeaders) }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.get("$ROOT_V3/notifications/unread/stream?herIds=42")
+
+                response.status shouldBe InternalServerError
+                response.bodyAsText() shouldBe problem
+                response.contentType()?.withoutParameters() shouldBe Json
+            }
+        }
+
+        "GET /notifications/unread with blank notifications to fetch returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V3/notifications/unread?herIds=42&notificationsToFetch=")
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/unread"
+            }
+        }
+
+        "GET /notifications/unread with notifications to fetch (0) returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V3/notifications/unread?herIds=42&notificationsToFetch=0")
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/unread"
+            }
+        }
+
+        "GET /notifications/unread with notifications to fetch (1001) returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V3/notifications/unread?herIds=42&notificationsToFetch=1001")
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/unread"
+            }
+        }
+
+        "GET /notifications/unread with non-numeric notifications to fetch returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V3/notifications/unread?herIds=42&notificationsToFetch=invalid")
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/unread"
+            }
+        }
+
+        "GET /notifications/unread with notifications to fetch exceeding Int range returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.get("$ROOT_V3/notifications/unread?herIds=42&notificationsToFetch=2147483648")
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/unread"
+            }
+        }
+
+        "GET /notifications/unread with offset and unknown query parameters forwards only her ids and returns 200" {
+            val ediClientV3 = fakeEdiClient { request ->
+                request.url.fullPath shouldBe "/notifications/unread?HerIds=42"
+                respond("""{"unreadNotifications":[]}""", headers = jsonHeaders)
+            }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.get("$ROOT_V3/notifications/unread?herIds=42&offset=invalid&unknown=value")
+
+                response.status shouldBe OK
+                response.bodyAsText() shouldBe """{"unreadNotifications":[]}"""
+            }
+        }
+
+        "GET /notifications/unread/stream forwards her ids and SSE accept header and returns 200" {
+            val payload = "event: connected\ndata:\n\nevent: notification\ndata: {\"notificationReceiverHerId\":42}\n\n"
+            val ediClientV3 = fakeEdiClient { request ->
+                request.method shouldBe HttpMethod.Get
+                request.url.fullPath shouldBe "/notifications/unread/stream?HerIds=42&HerIds=1337"
+                request.headers[Accept] shouldBe "text/event-stream"
+                respond(payload, headers = headersOf(ContentTypeHeader, "text/event-stream"))
+            }
+
+            ediClientV3.use {
+                withStreamingServer(ediClientV3) { baseUrl ->
+                    val response = get("$baseUrl$ROOT_V3/notifications/unread/stream?herIds=42&herIds=1337&offset=invalid&notificationsToFetch=invalid")
+                    response.status shouldBe OK
+                    response.contentType() shouldBe ContentType.Text.EventStream
+                    response.bodyAsText() shouldBe payload
+                }
+            }
+        }
+
+        "POST /notifications/delete returns 204" {
+            val payload =
+                """{
+                    "notificationIds": [
+                        "17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9",
+                        "c5e6b600-78ef-4d2a-ad5e-e4b64e3f5230"
+                    ]
+                }"""
+
+            val ediClientV3 = fakeEdiClient { request ->
+                request.url.fullPath shouldBe "/notifications/delete"
+                request.method shouldBe HttpMethod.Post
+                request.body<DeleteNotificationsRequest>() shouldBe JsonUtil.decodeFromString<DeleteNotificationsRequest>(payload)
+                request.body.contentType shouldBe Json
+                respond("", NoContent)
+            }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.post("$ROOT_V3/notifications/delete") {
+                    contentType(Json)
+                    setBody(payload)
+                }
+
+                response.status shouldBe NoContent
+                response.bodyAsText() shouldBe ""
+            }
+        }
+
+        "POST /notifications/delete with 1000 notification ids returns 204" {
+            val request = DeleteNotificationsRequest(List(1000) { Uuid.random() })
+            val ediClientV3 = fakeEdiClient { upstream ->
+                upstream.body<DeleteNotificationsRequest>() shouldBe request
+                respond("", NoContent)
+            }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.post("$ROOT_V3/notifications/delete") {
+                    contentType(Json)
+                    setBody(JsonUtil.encodeToString(request))
+                }
+
+                response.status shouldBe NoContent
+            }
+        }
+
+        "POST /notifications/delete with 1001 notification ids returns 400" {
+            val request = DeleteNotificationsRequest(List(1001) { Uuid.random() })
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.post("$ROOT_V3/notifications/delete") {
+                    contentType(Json)
+                    setBody(JsonUtil.encodeToString(request))
+                }
+
+                response.status shouldBe BadRequest
+            }
+        }
+
+        "POST /notifications/delete with missing notification ids returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.post("$ROOT_V3/notifications/delete") {
+                    contentType(Json)
+                    setBody("""{}""")
+                }
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/delete"
+            }
+        }
+
+        "POST /notifications/delete with null notification ids returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.post("$ROOT_V3/notifications/delete") {
+                    contentType(Json)
+                    setBody("""{"notificationIds":null}""")
+                }
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/delete"
+            }
+        }
+
+        "POST /notifications/delete with invalid notification id returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.post("$ROOT_V3/notifications/delete") {
+                    contentType(Json)
+                    setBody("""{"notificationIds":["invalid"]}""")
+                }
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/delete"
+            }
+        }
+
+        "POST /notifications/delete with duplicate notification ids returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.post("$ROOT_V3/notifications/delete") {
+                    contentType(Json)
+                    setBody("""{"notificationIds":["17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9","17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"]}""")
+                }
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/delete"
+            }
+        }
+
+        "POST /notifications/delete with malformed JSON returns 400" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.post("$ROOT_V3/notifications/delete") {
+                    contentType(Json)
+                    setBody("""not json""")
+                }
+
+                response.status shouldBe BadRequest
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 400
+                problem.instance shouldBe "$ROOT_V3/notifications/delete"
+            }
+        }
+
+        "POST /notifications/delete with unsupported content type returns 415" {
+            val ediClientV3 = fakeEdiClient { error("Should not be called") }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+                client = createJsonEnabledClient()
+
+                val response = client.post("$ROOT_V3/notifications/delete") {
+                    contentType(ContentType.Text.Plain)
+                    setBody("""{"notificationIds":[]}""")
+                }
+
+                response.status shouldBe UnsupportedMediaType
+                val problem = response.body<MshApiProblemDetails>()
+
+                problem.status shouldBe 415
+            }
+        }
+
+        "POST /notifications/delete returns 400" {
+            val problem =
+                """{
+                    "title": "NHN error",
+                    "status": 400,
+                    "errorCode": 1210,
+                    "requestId": "nhn-request-id"
+                }"""
+
+            val ediClientV3 = fakeEdiClient { respond(problem, BadRequest, jsonHeaders) }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.post("$ROOT_V3/notifications/delete") {
+                    contentType(Json)
+                    setBody("""{"notificationIds":["17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"]}""")
+                }
+
+                response.status shouldBe BadRequest
+                response.bodyAsText() shouldBe problem
+                response.contentType()?.withoutParameters() shouldBe Json
+            }
+        }
+
+        "POST /notifications/delete returns 401" {
+            val problem =
+                """{
+                    "title": "NHN error",
+                    "status": 401,
+                    "errorCode": 1210,
+                    "requestId": "nhn-request-id"
+                }"""
+
+            val ediClientV3 = fakeEdiClient { respond(problem, Unauthorized, jsonHeaders) }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.post("$ROOT_V3/notifications/delete") {
+                    contentType(Json)
+                    setBody("""{"notificationIds":["17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"]}""")
+                }
+
+                response.status shouldBe Unauthorized
+                response.bodyAsText() shouldBe problem
+                response.contentType()?.withoutParameters() shouldBe Json
+            }
+        }
+
+        "POST /notifications/delete returns 403" {
+            val problem =
+                """{
+                    "title": "NHN error",
+                    "status": 403,
+                    "errorCode": 1210,
+                    "requestId": "nhn-request-id"
+                }"""
+
+            val ediClientV3 = fakeEdiClient { respond(problem, Forbidden, jsonHeaders) }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.post("$ROOT_V3/notifications/delete") {
+                    contentType(Json)
+                    setBody("""{"notificationIds":["17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"]}""")
+                }
+
+                response.status shouldBe Forbidden
+                response.bodyAsText() shouldBe problem
+                response.contentType()?.withoutParameters() shouldBe Json
+            }
+        }
+
+        "POST /notifications/delete returns 423" {
+            val problem =
+                """{
+                    "title": "NHN error",
+                    "status": 423,
+                    "errorCode": 1210,
+                    "requestId": "nhn-request-id"
+                }"""
+
+            val ediClientV3 = fakeEdiClient { respond(problem, Locked, jsonHeaders) }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.post("$ROOT_V3/notifications/delete") {
+                    contentType(Json)
+                    setBody("""{"notificationIds":["17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"]}""")
+                }
+
+                response.status shouldBe Locked
+                response.bodyAsText() shouldBe problem
+                response.contentType()?.withoutParameters() shouldBe Json
+            }
+        }
+
+        "POST /notifications/delete returns 500" {
+            val problem =
+                """{
+                    "title": "NHN error",
+                    "status": 500,
+                    "errorCode": 1210,
+                    "requestId": "nhn-request-id"
+                }"""
+
+            val ediClientV3 = fakeEdiClient { respond(problem, InternalServerError, jsonHeaders) }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.post("$ROOT_V3/notifications/delete") {
+                    contentType(Json)
+                    setBody("""{"notificationIds":["17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"]}""")
+                }
+
+                response.status shouldBe InternalServerError
+                response.bodyAsText() shouldBe problem
+                response.contentType()?.withoutParameters() shouldBe Json
+            }
+        }
+
+        "POST /notifications/delete with empty notification ids returns 204" {
+            val ediClientV3 = fakeEdiClient { request ->
+                request.body<DeleteNotificationsRequest>() shouldBe DeleteNotificationsRequest(emptyList())
+                respond("", NoContent)
+            }
+
+            testApplication {
+                installExternalRoutes(ediClientV3 = ediClientV3)
+
+                val response = client.post("$ROOT_V3/notifications/delete") {
+                    contentType(Json)
+                    setBody("""{"notificationIds":[]}""")
+                }
+
+                response.status shouldBe NoContent
             }
         }
 

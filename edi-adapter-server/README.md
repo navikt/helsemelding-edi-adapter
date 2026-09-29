@@ -50,6 +50,9 @@ Routes are versioned under `/api/v1`, `/api/v2`, and `/api/v3`. Their upstream `
 |--------|-------------------------------------------|------------------------------------------------------|----------------------------------------|
 | GET    | `/api/v3/notifications`                   | Fetch notifications for given her ids and offset     | `GET /notifications`                   |
 | GET    | `/api/v3/notifications/stream`            | Stream notifications using SSE                       | `GET /notifications/stream` (SSE)      |
+| GET    | `/api/v3/notifications/unread`            | Fetch unread notifications for given her ids         | `GET /notifications/unread`            |
+| GET    | `/api/v3/notifications/unread/stream`     | Stream unread notifications using SSE                | `GET /notifications/unread/stream`     |
+| POST   | `/api/v3/notifications/delete`            | Delete processed notifications                       | `POST /notifications/delete`           |
 | POST   | `/api/v3/messages`                        | Send a new message                                   | `POST /messages`                       |
 | GET    | `/api/v3/messages/{messageId}`            | Get message metadata                                 | `GET /messages/{id}`                   |
 | GET    | `/api/v3/messages/{messageId}/document`   | Download the message payload                         | `GET /messages/{id}/business-document` |
@@ -61,6 +64,8 @@ Routes are versioned under `/api/v1`, `/api/v2`, and `/api/v3`. Their upstream `
 | GET    | `/api/v3/ping`                            | Test the connection to NHN                           | `GET /ping`                            |
 
 V3 supports notification polling and SSE streaming. Consumers must reconnect when a stream closes and resume from the last successfully processed offset.
+
+The unread endpoints use `herIds` without an offset. Unread polling accepts `notificationsToFetch` (1–1000, NHN default: 100) and returns `unreadNotifications`. Unread SSE forwards the NHN events unchanged. After processing, delete notifications using `POST /api/v3/notifications/delete` with their `notificationIds`; a successful request returns `204`.
 
 NHN errors are forwarded unchanged; local errors use `MshApiProblemDetails`. The Kotlin client uses V3, including automatic SSE reconnection from the last emitted notification, starting from a caller-provided offset.
 

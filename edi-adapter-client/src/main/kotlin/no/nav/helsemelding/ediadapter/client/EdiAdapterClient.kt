@@ -13,9 +13,8 @@ import arrow.resilience.Schedule
 import arrow.resilience.Schedule.Decision.Continue
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.HttpClient
-import io.ktor.client.plugins.sse.ClientSSESessionWithDeserialization
+import io.ktor.client.plugins.sse.ClientSSESession
 import io.ktor.client.plugins.sse.SSEClientException
-import io.ktor.client.plugins.sse.deserialize
 import io.ktor.client.plugins.sse.serverSentEventsSession
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.accept
@@ -43,13 +42,15 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.serializer
 import no.nav.helsemelding.ediadapter.model.common.GetBusinessDocumentResponse
+import no.nav.helsemelding.ediadapter.model.v3.DeleteNotificationsRequest
 import no.nav.helsemelding.ediadapter.model.v3.GetMessageResponse
 import no.nav.helsemelding.ediadapter.model.v3.GetNotificationsResponse
 import no.nav.helsemelding.ediadapter.model.v3.GetStatusResponse
+import no.nav.helsemelding.ediadapter.model.v3.GetUnreadNotificationsResponse
 import no.nav.helsemelding.ediadapter.model.v3.MarkAsDownloadedRequest
 import no.nav.helsemelding.ediadapter.model.v3.MshApiProblemDetails
 import no.nav.helsemelding.ediadapter.model.v3.Notification
@@ -59,6 +60,7 @@ import no.nav.helsemelding.ediadapter.model.v3.PostApprecResponse
 import no.nav.helsemelding.ediadapter.model.v3.PostMessageRequest
 import no.nav.helsemelding.ediadapter.model.v3.PostMessageResponse
 import no.nav.helsemelding.ediadapter.model.v3.SetMshConfigurationsRequest
+import no.nav.helsemelding.ediadapter.model.v3.UnreadNotification
 import java.io.IOException
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
@@ -82,6 +84,10 @@ interface EdiAdapterClient : AutoCloseable {
      * @param notificationsToFetch Maximum number of notifications to fetch, from 1 to 1000. Null uses the server default.
      * @return [Either.Right] containing the notifications, possibly empty, or [Either.Left] containing an [EdiAdapterError].
      */
+    @Deprecated(
+        message = "getNotifications is deprecated and may be discontinued in a future release. " +
+            "Use getUnreadNotifications instead; it returns unread notifications without an offset."
+    )
     suspend fun getNotifications(
         herIds: List<Int>,
         offset: Long,
@@ -96,6 +102,10 @@ interface EdiAdapterClient : AutoCloseable {
      * @param notificationsToFetch Maximum number of notifications to fetch, from 1 to 1000. Null uses the server default.
      * @return [Either.Right] containing the notifications, possibly empty, or [Either.Left] containing an [EdiAdapterError].
      */
+    @Deprecated(
+        message = "getNotifications is deprecated and may be discontinued in a future release. " +
+            "Use getUnreadNotifications instead; it returns unread notifications without an offset."
+    )
     suspend fun getNotifications(
         herId: Int,
         offset: Long,
@@ -126,6 +136,10 @@ interface EdiAdapterClient : AutoCloseable {
      * @return A cold [Flow] emitting [Either.Right] notifications or a terminal [Either.Left] with an
      *     [EdiAdapterError]. Retryable failures are handled internally without emitting a Left.
      */
+    @Deprecated(
+        message = "streamNotifications is deprecated and may be discontinued in a future release. " +
+            "Use streamUnreadNotifications instead; it returns unread notifications without an offset."
+    )
     fun streamNotifications(herIds: List<Int>, offset: Long? = null): Flow<Either<EdiAdapterError, Notification>>
 
     /**
@@ -138,10 +152,77 @@ interface EdiAdapterClient : AutoCloseable {
      * @return A cold [Flow] emitting [Either.Right] notifications or a terminal [Either.Left] with an
      *     [EdiAdapterError]. Retryable failures are handled internally without emitting a Left.
      */
+    @Deprecated(
+        message = "streamNotifications is deprecated and may be discontinued in a future release. " +
+            "Use streamUnreadNotifications instead; it returns unread notifications without an offset."
+    )
     fun streamNotifications(
         herId: Int,
         offset: Long? = null
     ): Flow<Either<EdiAdapterError, Notification>> = streamNotifications(listOf(herId), offset)
+
+    /**
+     * Fetches unread notifications for the requested her ids without an offset.
+     *
+     * @param herIds Between 1 and 1500 unique receiver her ids.
+     * @param notificationsToFetch Maximum number of notifications to fetch, from 1 to 1000. Null uses the server default.
+     * @return [Either.Right] containing the unread notifications, possibly empty, or [Either.Left] containing an [EdiAdapterError].
+     */
+    suspend fun getUnreadNotifications(
+        herIds: List<Int>,
+        notificationsToFetch: Int? = null
+    ): Either<EdiAdapterError, GetUnreadNotificationsResponse>
+
+    /**
+     * Fetches unread notifications for a single her id without an offset.
+     *
+     * @param herId Receiver her id whose unread notifications to fetch.
+     * @param notificationsToFetch Maximum number of notifications to fetch, from 1 to 1000. Null uses the server default.
+     * @return [Either.Right] containing the unread notifications, possibly empty, or [Either.Left] containing an [EdiAdapterError].
+     */
+    suspend fun getUnreadNotifications(
+        herId: Int,
+        notificationsToFetch: Int? = null
+    ): Either<EdiAdapterError, GetUnreadNotificationsResponse> =
+        getUnreadNotifications(listOf(herId), notificationsToFetch)
+
+    /**
+     * Opens a cold stream of unread notifications; each collection owns its connection.
+     *
+     * Reconnects on EOF, transport failures and HTTP 408, 429 or 5xx, with capped exponential backoff.
+     * Other HTTP errors and invalid notifications emit one Left and end the flow. HTTP 204 ends it normally.
+     * Empty `connected` events and events other than `notification` are ignored.
+     *
+     * Initial connections and reconnects use the requested her ids without an offset. Processing should
+     * tolerate redelivery. Cancelling collection closes the connection. Configuration errors, unexpected
+     * failures and exceptions from the collector propagate without reconnecting.
+     *
+     * @param herIds Between 1 and 1500 unique receiver her ids whose unread notifications to stream.
+     * @return A cold [Flow] emitting [Either.Right] unread notifications or a terminal [Either.Left] with an
+     *     [EdiAdapterError]. Retryable failures are handled internally without emitting a Left.
+     */
+    fun streamUnreadNotifications(herIds: List<Int>): Flow<Either<EdiAdapterError, UnreadNotification>>
+
+    /**
+     * Streams unread notifications for a single her id without an offset.
+     * Uses the same reconnect, error handling and cancellation behavior as the list overload.
+     *
+     * @param herId Receiver her id whose unread notifications to stream.
+     * @return A cold [Flow] emitting [Either.Right] unread notifications or a terminal [Either.Left] with an
+     *     [EdiAdapterError]. Retryable failures are handled internally without emitting a Left.
+     */
+    fun streamUnreadNotifications(herId: Int): Flow<Either<EdiAdapterError, UnreadNotification>> =
+        streamUnreadNotifications(listOf(herId))
+
+    /**
+     * Deletes notifications that have been read and processed successfully.
+     *
+     * Use notification IDs from [UnreadNotification], rather than the associated message IDs.
+     *
+     * @param request Unique notification IDs to delete, with at most 1000 IDs per request.
+     * @return [Either.Right] containing [Unit] on success, or [Either.Left] containing an [EdiAdapterError].
+     */
+    suspend fun deleteNotifications(request: DeleteNotificationsRequest): Either<EdiAdapterError, Unit>
 
     /**
      * Submits a business document for delivery to its recipients.
@@ -245,6 +326,10 @@ class HttpEdiAdapterClient(
         .delayed { _, duration -> duration.coerceAtMost(30.seconds) }
         .jittered(min = 0.5, max = 1.0)
 
+    @Deprecated(
+        message = "getNotifications is deprecated and may be discontinued in a future release. " +
+            "Use getUnreadNotifications instead; it returns unread notifications without an offset."
+    )
     override suspend fun getNotifications(
         herIds: List<Int>,
         offset: Long,
@@ -254,6 +339,17 @@ class HttpEdiAdapterClient(
         parameter("offset", offset)
         parameter("notificationsToFetch", notificationsToFetch)
     }
+
+    override suspend fun getUnreadNotifications(
+        herIds: List<Int>,
+        notificationsToFetch: Int?
+    ): Either<EdiAdapterError, GetUnreadNotificationsResponse> = request(Get, "notifications/unread") {
+        herIds.forEach { parameter("herIds", it) }
+        parameter("notificationsToFetch", notificationsToFetch)
+    }
+
+    override suspend fun deleteNotifications(request: DeleteNotificationsRequest): Either<EdiAdapterError, Unit> =
+        request(Post, "notifications/delete") { jsonBody(request) }
 
     override suspend fun postMessage(request: PostMessageRequest): Either<EdiAdapterError, PostMessageResponse> =
         request(Post, "messages") { jsonBody(request) }
@@ -286,17 +382,36 @@ class HttpEdiAdapterClient(
 
     override suspend fun ping(): Either<EdiAdapterError, PingResponse> = request(Get, "ping")
 
+    @Deprecated(
+        message = "streamNotifications is deprecated and may be discontinued in a future release. " +
+            "Use streamUnreadNotifications instead; it returns unread notifications without an offset."
+    )
     override fun streamNotifications(
         herIds: List<Int>,
         offset: Long?
-    ): Flow<Either<EdiAdapterError, Notification>> = flow {
+    ): Flow<Either<EdiAdapterError, Notification>> =
+        notificationStream(herIds, "notifications/stream", Notification.serializer(), offset) { it.offset }
+
+    override fun streamUnreadNotifications(herIds: List<Int>): Flow<Either<EdiAdapterError, UnreadNotification>> =
+        notificationStream(herIds, "notifications/unread/stream", UnreadNotification.serializer())
+
+    private fun <T> notificationStream(
+        herIds: List<Int>,
+        path: String,
+        serializer: KSerializer<T>,
+        offset: Long? = null,
+        offsetOf: (T) -> Long? = { null }
+    ): Flow<Either<EdiAdapterError, T>> = flow {
         either {
             var resumeOffset = offset
             var reconnect = reconnectSchedule.step
             while (true) {
-                val finished = collectNotifications(herIds, resumeOffset) { notification ->
+                val finished = collectNotifications(
+                    serializer = serializer,
+                    openSession = { openNotificationSession(herIds, path, resumeOffset) }
+                ) { notification ->
                     emit(Right(notification))
-                    resumeOffset = notification.offset
+                    resumeOffset = offsetOf(notification)
                     reconnect = reconnectSchedule.step
                 }
                     .getOrElse { error ->
@@ -304,7 +419,7 @@ class HttpEdiAdapterClient(
                         false
                     }
                 ensure(!finished) { }
-                // NHN resumes via the notification offset, rather than SSE's Last-Event-ID.
+                // Offset-based streams resume via the notification offset; unread streams reconnect without one.
                 val decision = reconnect(Unit)
                 ensure(decision is Continue) { }
                 log.debug { "Reconnecting notification stream in ${decision.delay}" }
@@ -318,16 +433,16 @@ class HttpEdiAdapterClient(
         httpClient.close()
     }
 
-    private suspend fun collectNotifications(
-        herIds: List<Int>,
-        offset: Long?,
-        onNotification: suspend (Notification) -> Unit
+    private suspend fun <T> collectNotifications(
+        serializer: KSerializer<T>,
+        openSession: suspend () -> ClientSSESession,
+        onNotification: suspend (T) -> Unit
     ): Either<EdiAdapterError, Boolean> = either {
         var finished = false
         flow {
-            val session = openNotificationSession(herIds, offset)
+            val session = openSession()
             finished = session.call.response.status == HttpStatusCode.NoContent
-            emitAll(session.notifications())
+            emitAll(session.notifications(serializer))
         }
             .catch { cause -> raise(streamError(cause)) }
             .collect { onNotification(it) }
@@ -336,16 +451,11 @@ class HttpEdiAdapterClient(
 
     private suspend fun openNotificationSession(
         herIds: List<Int>,
+        path: String,
         offset: Long?
-    ): ClientSSESessionWithDeserialization {
-        log.debug { "Opening notification stream for her ids: $herIds from offset $offset" }
-        return httpClient.serverSentEventsSession(
-            "$baseUrl/notifications/stream",
-            deserialize = { type, data ->
-                val serializer = json.serializersModule.serializer(type.kotlinType!!)
-                json.decodeFromString(serializer, data)
-            }
-        ) {
+    ): ClientSSESession {
+        log.debug { "Opening $path for her ids: $herIds from offset $offset" }
+        return httpClient.serverSentEventsSession("$baseUrl/$path") {
             herIds.forEach { parameter("herIds", it) }
             parameter("offset", offset)
         }
@@ -354,11 +464,10 @@ class HttpEdiAdapterClient(
             }
     }
 
-    private fun ClientSSESessionWithDeserialization.notifications(): Flow<Notification> = incoming
+    private fun <T> ClientSSESession.notifications(serializer: KSerializer<T>): Flow<T> = incoming
         .filter { it.event == "notification" }
         .map { event ->
-            deserialize<Notification>(event.data)
-                ?: throw SerializationException("Missing notification data")
+            json.decodeFromString(serializer, event.data ?: throw SerializationException("Missing notification data"))
         }
         .onCompletion {
             cancel()

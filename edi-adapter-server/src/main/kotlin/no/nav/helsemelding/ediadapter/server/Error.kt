@@ -27,6 +27,7 @@ data class HerIdsInvalidCount(val maxItems: Int) : ValidationError
 data object OffsetMissing : ValidationError
 data object OffsetInvalidFormat : ValidationError
 data object NotificationsToFetchInvalidFormat : ValidationError
+data object NotificationIdsInvalidCount : ValidationError
 
 fun MessageError.toContent(): TextContent =
     when (this) {
@@ -83,6 +84,9 @@ fun MessageError.toContent(): TextContent =
 
         is OffsetInvalidFormat ->
             TextContent("Offset must be a non-negative 32-bit integer")
+
+        is NotificationIdsInvalidCount ->
+            TextContent("Notification ids must contain at most 1000 unique ids")
 
         is NotificationsToFetchInvalidFormat ->
             TextContent("Notifications to fetch must be between 1 and 1000")

@@ -24,10 +24,12 @@ import kotlinx.serialization.json.Json
 import no.nav.helsemelding.ediadapter.model.common.GetBusinessDocumentResponse
 import no.nav.helsemelding.ediadapter.model.v3.AppRecStatus
 import no.nav.helsemelding.ediadapter.model.v3.ApprecInfo
+import no.nav.helsemelding.ediadapter.model.v3.DeleteNotificationsRequest
 import no.nav.helsemelding.ediadapter.model.v3.DeliveryState
 import no.nav.helsemelding.ediadapter.model.v3.GetMessageResponse
 import no.nav.helsemelding.ediadapter.model.v3.GetNotificationsResponse
 import no.nav.helsemelding.ediadapter.model.v3.GetStatusResponse
+import no.nav.helsemelding.ediadapter.model.v3.GetUnreadNotificationsResponse
 import no.nav.helsemelding.ediadapter.model.v3.MarkAsDownloadedRequest
 import no.nav.helsemelding.ediadapter.model.v3.MshApiProblemDetails
 import no.nav.helsemelding.ediadapter.model.v3.MshConfiguration
@@ -41,6 +43,7 @@ import no.nav.helsemelding.ediadapter.model.v3.PostMessageResponse
 import no.nav.helsemelding.ediadapter.model.v3.ReceiveNotificationChannel
 import no.nav.helsemelding.ediadapter.model.v3.SetMshConfigurationsRequest
 import no.nav.helsemelding.ediadapter.model.v3.StatusInfo
+import no.nav.helsemelding.ediadapter.model.v3.UnreadNotification
 import java.io.IOException
 import kotlin.uuid.Uuid
 
@@ -68,12 +71,82 @@ class EdiAdapterClientSpec : StringSpec(
             }
         }
 
-        "getNotifications omits the default page size" {
+        "getNotifications without notifications to fetch omits the query parameter" {
             withClient({ request ->
                 request.url.fullPath shouldBe "/api/v3/notifications?herIds=123&offset=0"
                 respondJson(GetNotificationsResponse(emptyList()))
             }) { client ->
                 client.getNotifications(listOf(123), 0).shouldBeRight(GetNotificationsResponse(emptyList()))
+            }
+        }
+
+        "getUnreadNotifications sends her ids and notifications to fetch" {
+            val expected = GetUnreadNotificationsResponse(
+                listOf(
+                    UnreadNotification(
+                        notificationId = id,
+                        type = NotificationType.NEW_MESSAGE,
+                        notificationReceiverHerId = 123
+                    ),
+                    UnreadNotification(
+                        notificationId = Uuid.random(),
+                        type = NotificationType.REFUSED_MESSAGE,
+                        notificationReceiverHerId = 456
+                    )
+                )
+            )
+            withClient({ request ->
+                request.method shouldBe HttpMethod.Get
+                request.url.fullPath shouldBe "/api/v3/notifications/unread?herIds=123&herIds=456&notificationsToFetch=2"
+                respondJson(expected)
+            }) { client ->
+                client.getUnreadNotifications(listOf(123, 456), 2).shouldBeRight(expected)
+            }
+        }
+
+        "getUnreadNotifications without notifications to fetch omits the query parameter" {
+            withClient({ request ->
+                request.url.fullPath shouldBe "/api/v3/notifications/unread?herIds=123"
+                respondJson(GetUnreadNotificationsResponse(emptyList()))
+            }) { client ->
+                client.getUnreadNotifications(listOf(123)).shouldBeRight(GetUnreadNotificationsResponse(emptyList()))
+            }
+        }
+
+        "getUnreadNotifications sends a single her id and notifications to fetch" {
+            withClient({ request ->
+                request.url.fullPath shouldBe "/api/v3/notifications/unread?herIds=123&notificationsToFetch=10"
+                respondJson(GetUnreadNotificationsResponse(emptyList()))
+            }) { client ->
+                client.getUnreadNotifications(123, 10).shouldBeRight(GetUnreadNotificationsResponse(emptyList()))
+            }
+        }
+
+        "getUnreadNotifications with a single her id and without notifications to fetch omits the query parameter" {
+            withClient({ request ->
+                request.url.fullPath shouldBe "/api/v3/notifications/unread?herIds=123"
+                respondJson(GetUnreadNotificationsResponse(emptyList()))
+            }) { client ->
+                client.getUnreadNotifications(123).shouldBeRight(GetUnreadNotificationsResponse(emptyList()))
+            }
+        }
+
+        "deleteNotifications sends notification ids using POST and accepts 204" {
+            val body = DeleteNotificationsRequest(listOf(id, Uuid.random()))
+            withClient({ request ->
+                request.method shouldBe HttpMethod.Post
+                request.url.fullPath shouldBe "/api/v3/notifications/delete"
+                request.body.shouldBeInstanceOf<TextContent>().contentType.toString() shouldBe "application/json"
+                request.body<DeleteNotificationsRequest>() shouldBe body
+                respond("", HttpStatusCode.NoContent)
+            }) { client -> client.deleteNotifications(body).shouldBeRight(Unit) }
+        }
+
+        "deleteNotifications returns 403 with problem details" {
+            val problem = MshApiProblemDetails(status = 403, title = "Forbidden")
+            withClient({ respondJson(problem, HttpStatusCode.Forbidden) }) { client ->
+                client.deleteNotifications(DeleteNotificationsRequest(listOf(id)))
+                    .shouldBeLeft(EdiAdapterError.Api(403, problem))
             }
         }
 

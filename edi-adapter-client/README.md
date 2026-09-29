@@ -24,8 +24,11 @@ Cancel active streams before closing the client.
 
 | Method | Description |
 |--------|-------------|
-| `getNotifications` | Fetch notifications after an offset |
-| `streamNotifications` | Stream notifications as a Kotlin Flow |
+| `getNotifications` | Deprecated; use `getUnreadNotifications` |
+| `streamNotifications` | Deprecated; use `streamUnreadNotifications` |
+| `getUnreadNotifications` | Fetch unread notifications without an offset |
+| `streamUnreadNotifications` | Stream unread notifications as a Kotlin Flow |
+| `deleteNotifications` | Delete notifications after successful processing |
 | `postMessage` | Send a business document |
 | `getMessage` | Fetch message metadata |
 | `getBusinessDocument` | Fetch the encoded document |
@@ -66,6 +69,28 @@ The checkpoint store and handlers above are application code. Persist offsets af
 after restart, and tolerate redelivery. With buffering or asynchronous processing, the last emitted offset
 may be ahead of the last processed offset. Without an initial offset, reconnects before the first notification
 can miss events. Cancelling collection closes the connection.
+
+## Unread notifications
+
+`getUnreadNotifications` and `streamUnreadNotifications` accept one her id or a list without an offset.
+Polling accepts an optional `notificationsToFetch` and returns `GetUnreadNotificationsResponse`.
+Streaming emits `Either<EdiAdapterError, UnreadNotification>` and uses the same reconnect, error handling
+and cancellation behavior as `streamNotifications`. Reconnects use the same her ids without an offset;
+processing should tolerate redelivery.
+
+After successful processing, call `deleteNotifications(DeleteNotificationsRequest(notificationIds))`
+with the processed notification IDs. It returns `Either<EdiAdapterError, Unit>`.
+
+```kotlin
+val response = client.getUnreadNotifications(herIds, notificationsToFetch = 100)
+
+client.streamUnreadNotifications(herIds).collect { result ->
+    when (result) {
+        is Either.Left -> handleError(result.value)
+        is Either.Right -> process(result.value)
+    }
+}
+```
 
 ## Relationship to other modules
 
