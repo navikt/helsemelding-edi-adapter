@@ -87,15 +87,20 @@ class EdiAdapterClientSpec : StringSpec(
                         notificationId = id,
                         type = NotificationType.NEW_MESSAGE,
                         notificationReceiverHerId = 123
+                    ),
+                    UnreadNotification(
+                        notificationId = Uuid.random(),
+                        type = NotificationType.REFUSED_MESSAGE,
+                        notificationReceiverHerId = 456
                     )
                 )
             )
             withClient({ request ->
                 request.method shouldBe HttpMethod.Get
-                request.url.fullPath shouldBe "/api/v3/notifications/unread?herIds=123&herIds=456&notificationsToFetch=1000"
+                request.url.fullPath shouldBe "/api/v3/notifications/unread?herIds=123&herIds=456&notificationsToFetch=2"
                 respondJson(expected)
             }) { client ->
-                client.getUnreadNotifications(listOf(123, 456), 1000).shouldBeRight(expected)
+                client.getUnreadNotifications(listOf(123, 456), 2).shouldBeRight(expected)
             }
         }
 
