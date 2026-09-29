@@ -406,7 +406,10 @@ class HttpEdiAdapterClient(
             var resumeOffset = offset
             var reconnect = reconnectSchedule.step
             while (true) {
-                val finished = collectNotifications(herIds, path, serializer, resumeOffset) { notification ->
+                val finished = collectNotifications(
+                    serializer = serializer,
+                    openSession = { openNotificationSession(herIds, path, resumeOffset) }
+                ) { notification ->
                     emit(Right(notification))
                     resumeOffset = offsetOf(notification)
                     reconnect = reconnectSchedule.step
@@ -431,15 +434,13 @@ class HttpEdiAdapterClient(
     }
 
     private suspend fun <T> collectNotifications(
-        herIds: List<Int>,
-        path: String,
         serializer: KSerializer<T>,
-        offset: Long?,
+        openSession: suspend () -> ClientSSESession,
         onNotification: suspend (T) -> Unit
     ): Either<EdiAdapterError, Boolean> = either {
         var finished = false
         flow {
-            val session = openNotificationSession(herIds, path, offset)
+            val session = openSession()
             finished = session.call.response.status == HttpStatusCode.NoContent
             emitAll(session.notifications(serializer))
         }
