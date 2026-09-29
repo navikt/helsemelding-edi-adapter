@@ -178,7 +178,12 @@ class SerializationSpec : StringSpec(
             assertSerialization(
                 GetNotificationsResponse(
                     listOf(
-                        Notification(notificationId = Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"), type = NotificationType.NEW_MESSAGE, notificationReceiverHerId = 456, offset = 0)
+                        Notification(
+                            notificationId = Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"),
+                            type = NotificationType.NEW_MESSAGE,
+                            notificationReceiverHerId = 456,
+                            offset = 0
+                        )
                     )
                 ),
                 """
@@ -255,7 +260,11 @@ class SerializationSpec : StringSpec(
             assertSerialization(
                 GetUnreadNotificationsResponse(
                     listOf(
-                        UnreadNotification(notificationId = Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"), type = NotificationType.NEW_MESSAGE, notificationReceiverHerId = 456)
+                        UnreadNotification(
+                            notificationId = Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"),
+                            type = NotificationType.NEW_MESSAGE,
+                            notificationReceiverHerId = 456
+                        )
                     )
                 ),
                 """
@@ -690,7 +699,12 @@ class SerializationSpec : StringSpec(
         }
 
         "Notification preserves nullable and default fields" {
-            val expected = Notification(notificationId = Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"), type = NotificationType.NEW_MESSAGE, notificationReceiverHerId = 456, offset = 0)
+            val expected = Notification(
+                notificationId = Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"),
+                type = NotificationType.NEW_MESSAGE,
+                notificationReceiverHerId = 456,
+                offset = 0
+            )
             assertSerialization(
                 expected,
                 """
@@ -719,7 +733,11 @@ class SerializationSpec : StringSpec(
         }
 
         "UnreadNotification preserves nullable and default fields" {
-            val expected = UnreadNotification(notificationId = Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"), type = NotificationType.NEW_MESSAGE, notificationReceiverHerId = 456)
+            val expected = UnreadNotification(
+                notificationId = Uuid.parse("17aaeaa7-fa1e-4b60-a8e9-bdc31718dfc9"),
+                type = NotificationType.NEW_MESSAGE,
+                notificationReceiverHerId = 456
+            )
             assertSerialization(
                 expected,
                 """
