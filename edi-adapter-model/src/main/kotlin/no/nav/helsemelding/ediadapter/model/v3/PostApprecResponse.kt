@@ -1,6 +1,7 @@
 package no.nav.helsemelding.ediadapter.model.v3
 
 import kotlinx.serialization.Serializable
+import kotlin.uuid.Uuid
 
 /**
  * Reference returned when sending an application receipt is accepted.
@@ -12,5 +13,5 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class PostApprecResponse(
-    val id: String? = null
+    val id: Uuid? = null
 )

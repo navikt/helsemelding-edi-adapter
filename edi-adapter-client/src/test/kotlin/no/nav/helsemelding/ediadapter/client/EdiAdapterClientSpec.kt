@@ -157,9 +157,9 @@ class EdiAdapterClientSpec : StringSpec(
                 request.url.fullPath shouldBe "/api/v3/messages"
                 request.body.shouldBeInstanceOf<TextContent>().contentType.toString() shouldBe "application/json"
                 request.body<PostMessageRequest>() shouldBe body
-                respondJson(PostMessageResponse(id.toString()), HttpStatusCode.Accepted)
+                respondJson(PostMessageResponse(id), HttpStatusCode.Accepted)
             }) { client ->
-                client.postMessage(body).shouldBeRight(PostMessageResponse(id.toString()))
+                client.postMessage(body).shouldBeRight(PostMessageResponse(id))
             }
         }
 
@@ -226,8 +226,8 @@ class EdiAdapterClientSpec : StringSpec(
                 request.method shouldBe HttpMethod.Post
                 request.url.fullPath shouldBe "/api/v3/messages/$id/apprec"
                 request.body<PostAppRecRequest>() shouldBe body
-                respondJson(PostApprecResponse(id.toString()), HttpStatusCode.Accepted)
-            }) { client -> client.postApprec(id, body).shouldBeRight(PostApprecResponse(id.toString())) }
+                respondJson(PostApprecResponse(id), HttpStatusCode.Accepted)
+            }) { client -> client.postApprec(id, body).shouldBeRight(PostApprecResponse(id)) }
         }
 
         "markMessageAsDownloaded sends the receiver and accepts an empty response" {

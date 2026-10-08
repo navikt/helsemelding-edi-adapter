@@ -1,6 +1,7 @@
 package no.nav.helsemelding.ediadapter.model.v3
 
 import kotlinx.serialization.Serializable
+import kotlin.uuid.Uuid
 
 /**
  * Reference returned when a request to send a business document is accepted.
@@ -12,5 +13,5 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class PostMessageResponse(
-    val id: String? = null
+    val id: Uuid? = null
 )
