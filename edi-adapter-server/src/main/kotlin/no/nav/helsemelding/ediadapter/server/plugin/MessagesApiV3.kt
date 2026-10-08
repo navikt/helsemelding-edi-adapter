@@ -537,7 +537,7 @@ object MessagesApiV3 {
 
                 body<PostMessageResponse> {
                     example("Message reference") {
-                        value = PostMessageResponse(id = "733be787-0ad0-475a-98b7-00512caa9ccb")
+                        value = PostMessageResponse(id = Uuid.parse("733be787-0ad0-475a-98b7-00512caa9ccb"))
                     }
                 }
             }
@@ -902,7 +902,7 @@ object MessagesApiV3 {
 
                 body<PostApprecResponse> {
                     example("Application receipt reference") {
-                        value = PostApprecResponse(id = "68e60a2b-5990-408c-b99b-089d8657d6ed")
+                        value = PostApprecResponse(id = Uuid.parse("68e60a2b-5990-408c-b99b-089d8657d6ed"))
                     }
                 }
             }

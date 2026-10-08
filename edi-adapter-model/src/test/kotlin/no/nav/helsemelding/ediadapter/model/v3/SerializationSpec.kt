@@ -491,10 +491,10 @@ class SerializationSpec : StringSpec(
 
         "PostMessageResponse serializes and deserializes all fields" {
             assertSerialization(
-                PostMessageResponse("message-id"),
+                PostMessageResponse(Uuid.parse("d5d19a53-d9b7-40e3-a272-64d95f95db17")),
                 """
                 {
-                  "id": "message-id"
+                  "id": "d5d19a53-d9b7-40e3-a272-64d95f95db17"
                 }
                 """
             )
@@ -502,10 +502,10 @@ class SerializationSpec : StringSpec(
 
         "PostApprecResponse serializes and deserializes all fields" {
             assertSerialization(
-                PostApprecResponse("message-id"),
+                PostApprecResponse(Uuid.parse("6386ac14-ffc0-4952-9a91-f607821fa66b")),
                 """
                 {
-                  "id": "message-id"
+                  "id": "6386ac14-ffc0-4952-9a91-f607821fa66b"
                 }
                 """
             )
