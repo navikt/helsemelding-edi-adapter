@@ -12,8 +12,8 @@ dependencyResolutionManagement {
     versionCatalogs {
         create("libs") {
             version("arrow", "2.0.1")
-            version("jwt", "4.4.0")
-            version("nimbus-jwt", "9.31")
+            version("jwt", "4.6.2")
+            version("nimbus-jwt", "9.32")
             version("suspendapp", "0.5.0")
             version("ktor", "3.3.1")
             version("ktor-swagger-ui", "5.4.0")
