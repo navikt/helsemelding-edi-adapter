@@ -888,9 +888,7 @@ object MessagesApiV3 {
                 example("Accept message") {
                     value = PostAppRecRequest(
                         appRecSenderHerId = 8142520,
-                        appRecStatus = AppRecStatus.OK,
-                        applicationName = "EPJ Front",
-                        applicationVersion = "18.0.8"
+                        appRecStatus = AppRecStatus.OK
                     )
                 }
             }

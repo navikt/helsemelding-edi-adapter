@@ -221,7 +221,7 @@ class EdiAdapterClientSpec : StringSpec(
         }
 
         "postApprec sends the sender in the V3 payload" {
-            val body = PostAppRecRequest(123, AppRecStatus.OK, applicationName = "app", applicationVersion = "1.0")
+            val body = PostAppRecRequest(123, AppRecStatus.OK)
             withClient({ request ->
                 request.method shouldBe HttpMethod.Post
                 request.url.fullPath shouldBe "/api/v3/messages/$id/apprec"

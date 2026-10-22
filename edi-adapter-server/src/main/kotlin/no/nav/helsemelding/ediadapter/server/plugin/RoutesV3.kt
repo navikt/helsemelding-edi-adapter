@@ -55,6 +55,7 @@ import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.streamNotifica
 import no.nav.helsemelding.ediadapter.server.plugin.MessagesApiV3.streamUnreadNotificationsDocs
 import no.nav.helsemelding.ediadapter.server.unreadNotificationParameters
 import no.nav.helsemelding.ediadapter.server.validateDeleteNotifications
+import no.nav.helsemelding.ediadapter.server.model.PostAppRecRequest as InternalPostAppRecRequest
 import no.nav.helsemelding.ediadapter.server.model.PostMessageRequest as InternalPostMessageRequest
 
 internal fun Route.v3Routes(ediClient: HttpClient) {
@@ -159,7 +160,7 @@ internal fun Route.v3Routes(ediClient: HttpClient) {
                 val messageId = messageId(call)
                 ediClient.post("messages/$messageId/apprec") {
                     contentType(ContentType.Application.Json)
-                    setBody(apprec)
+                    setBody(InternalPostAppRecRequest.from(apprec, config().nhn))
                 }
             }
         )
