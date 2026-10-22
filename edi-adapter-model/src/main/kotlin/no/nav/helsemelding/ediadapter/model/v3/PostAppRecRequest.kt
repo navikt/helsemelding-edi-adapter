@@ -13,9 +13,6 @@ import kotlinx.serialization.Serializable
  * @property appRecStatus Application processing outcome for the original message.
  * @property appRecErrorList Reasons for rejection; must be populated when [appRecStatus] is
  *     [AppRecStatus.REJECTED].
- * @property applicationName Name of the application or electronic patient record system producing the
- *     receipt (HIS 1210:2018).
- * @property applicationVersion Version of the application producing the receipt (HIS 1210:2018).
  * @property transportMetadataOverrides Optional envelope overrides; normally the server derives the values
  *     from the request and original message.
  */
@@ -24,7 +21,5 @@ data class PostAppRecRequest(
     val appRecSenderHerId: Int,
     val appRecStatus: AppRecStatus,
     val appRecErrorList: List<AppRecError>? = null,
-    val applicationName: String,
-    val applicationVersion: String,
     val transportMetadataOverrides: AppRecTransportMetadataOverrides? = null
 )

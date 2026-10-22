@@ -435,8 +435,6 @@ class SerializationSpec : StringSpec(
                     appRecSenderHerId = 456,
                     appRecStatus = AppRecStatus.REJECTED,
                     appRecErrorList = listOf(AppRecError("E10", "Invalid document")),
-                    applicationName = "application",
-                    applicationVersion = "1.0",
                     transportMetadataOverrides = AppRecTransportMetadataOverrides(transportSenderHerId = 456)
                 ),
                 """
@@ -449,8 +447,6 @@ class SerializationSpec : StringSpec(
                       "details": "Invalid document"
                     }
                   ],
-                  "applicationName": "application",
-                  "applicationVersion": "1.0",
                   "transportMetadataOverrides": {
                     "transportSenderHerId": 456
                   }
@@ -784,15 +780,13 @@ class SerializationSpec : StringSpec(
         }
 
         "PostAppRecRequest preserves nullable and default fields" {
-            val expected = PostAppRecRequest(456, AppRecStatus.OK, applicationName = "application", applicationVersion = "1.0")
+            val expected = PostAppRecRequest(456, AppRecStatus.OK)
             assertSerialization(
                 expected,
                 """
                 {
                   "appRecSenderHerId": 456,
-                  "appRecStatus": "Ok",
-                  "applicationName": "application",
-                  "applicationVersion": "1.0"
+                  "appRecStatus": "Ok"
                 }
                 """
             )
@@ -801,8 +795,6 @@ class SerializationSpec : StringSpec(
                 {
                   "appRecSenderHerId": 456,
                   "appRecStatus": "Ok",
-                  "applicationName": "application",
-                  "applicationVersion": "1.0",
                   "appRecErrorList": null,
                   "transportMetadataOverrides": null
                 }

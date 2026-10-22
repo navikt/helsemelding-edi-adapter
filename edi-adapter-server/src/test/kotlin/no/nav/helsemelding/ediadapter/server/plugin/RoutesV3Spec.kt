@@ -44,6 +44,9 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import no.nav.helsemelding.ediadapter.model.v3.AppRecError
+import no.nav.helsemelding.ediadapter.model.v3.AppRecStatus.REJECTED
+import no.nav.helsemelding.ediadapter.model.v3.AppRecTransportMetadataOverrides
 import no.nav.helsemelding.ediadapter.model.v3.DeleteNotificationsRequest
 import no.nav.helsemelding.ediadapter.model.v3.GetNotificationsResponse
 import no.nav.helsemelding.ediadapter.model.v3.GetStatusResponse
@@ -51,9 +54,9 @@ import no.nav.helsemelding.ediadapter.model.v3.GetUnreadNotificationsResponse
 import no.nav.helsemelding.ediadapter.model.v3.MarkAsDownloadedRequest
 import no.nav.helsemelding.ediadapter.model.v3.MessageTransportMetadataOverrides
 import no.nav.helsemelding.ediadapter.model.v3.MshApiProblemDetails
-import no.nav.helsemelding.ediadapter.model.v3.PostAppRecRequest
 import no.nav.helsemelding.ediadapter.model.v3.SetMshConfigurationsRequest
 import no.nav.helsemelding.ediadapter.server.config
+import no.nav.helsemelding.ediadapter.server.model.PostAppRecRequest
 import no.nav.helsemelding.ediadapter.server.model.PostMessageRequest
 import java.io.IOException
 import kotlin.time.Duration.Companion.milliseconds
@@ -1521,7 +1524,7 @@ class RoutesV3Spec : StringSpec(
             }
         }
 
-        "POST /messages/{id}/apprec forwards request body and returns 202 from EDI response" {
+        "POST /messages/{id}/apprec adds configured application metadata and returns 202 from EDI response" {
             val payload = """{
                 "appRecSenderHerId": 42,
                 "appRecStatus": "Rejected",
@@ -1533,8 +1536,6 @@ class RoutesV3Spec : StringSpec(
                         "oid": null
                     }
                 ],
-                "applicationName": "Test EPJ",
-                "applicationVersion": "1.0",
                 "transportMetadataOverrides": {
                     "transportSenderHerId": 42,
                     "transportReceiverHerId": null,
@@ -1555,7 +1556,14 @@ class RoutesV3Spec : StringSpec(
             val ediClientV3 = fakeEdiClient { request ->
                 request.url.fullPath shouldBe "/messages/$V3_MESSAGE_ID/apprec"
                 request.method shouldBe HttpMethod.Post
-                request.body<PostAppRecRequest>() shouldBe JsonUtil.decodeFromString<PostAppRecRequest>(payload)
+                request.body<PostAppRecRequest>() shouldBe PostAppRecRequest(
+                    appRecSenderHerId = 42,
+                    appRecStatus = REJECTED,
+                    appRecErrorList = listOf(AppRecError("E10", null, null, null)),
+                    applicationName = config().nhn.applicationName.value,
+                    applicationVersion = config().nhn.applicationVersion.value,
+                    transportMetadataOverrides = AppRecTransportMetadataOverrides(transportSenderHerId = 42)
+                )
                 respond(
                     result,
                     Accepted,
