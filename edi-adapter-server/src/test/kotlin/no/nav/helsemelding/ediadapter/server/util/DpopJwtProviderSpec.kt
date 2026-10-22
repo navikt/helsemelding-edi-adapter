@@ -1,7 +1,8 @@
 package no.nav.helsemelding.ediadapter.server.util
 
 import com.auth0.jwt.JWT
-import com.auth0.jwt.algorithms.Algorithm.RSA256
+import com.auth0.jwt.algorithms.Algorithm.RSA256PSS
+import com.nimbusds.jose.JWSAlgorithm.PS256
 import com.nimbusds.jose.crypto.RSASSAVerifier
 import com.nimbusds.jwt.SignedJWT
 import com.nimbusds.oauth2.sdk.token.DPoPAccessToken
@@ -27,6 +28,7 @@ class DpopJwtProviderSpec : StringSpec(
 
             val signedJwt = SignedJWT.parse(signedJwtJson)
             signedJwt.verify(RSASSAVerifier(jwtProvider.rsaKey())) shouldBe true
+            signedJwt.header.algorithm shouldBe PS256
 
             val claims = signedJwt.jwtClaimsSet
             claims.getStringClaim("htm") shouldBe "POST"
@@ -41,6 +43,7 @@ class DpopJwtProviderSpec : StringSpec(
 
             val signedJwt = SignedJWT.parse(signedJwtJson)
             signedJwt.verify(RSASSAVerifier(jwtProvider.rsaKey())) shouldBe true
+            signedJwt.header.algorithm shouldBe PS256
 
             val claims = signedJwt.jwtClaimsSet
             claims.getStringClaim("htm") shouldBe Post.value
@@ -58,6 +61,7 @@ class DpopJwtProviderSpec : StringSpec(
 
             val signedJwt = SignedJWT.parse(signedJwtJson)
             signedJwt.verify(RSASSAVerifier(jwtProvider.rsaKey())) shouldBe true
+            signedJwt.header.algorithm shouldBe PS256
 
             val claims = signedJwt.jwtClaimsSet
             claims.getStringClaim("htm") shouldBe Get.value
@@ -72,7 +76,7 @@ class DpopJwtProviderSpec : StringSpec(
 
             val decoded = JWT.decode(assertion)
 
-            val verification = JWT.require(RSA256(jwtProvider.rsaKey().toRSAPublicKey(), null))
+            val verification = JWT.require(RSA256PSS(jwtProvider.rsaKey().toRSAPublicKey(), null))
                 .withIssuer(config().nhnOAuth.clientId.value)
                 .withSubject(config().nhnOAuth.clientId.value)
                 .withAudience(config().nhnOAuth.audience.value)
@@ -80,6 +84,7 @@ class DpopJwtProviderSpec : StringSpec(
 
             verification.verify(assertion)
 
+            decoded.algorithm shouldBe PS256.name
             decoded.issuer shouldBe config().nhnOAuth.clientId.value
             decoded.subject shouldBe config().nhnOAuth.clientId.value
             decoded.audience shouldContain config().nhnOAuth.audience.value
@@ -87,7 +92,7 @@ class DpopJwtProviderSpec : StringSpec(
 
             val headerJson = String(getUrlDecoder().decode(decoded.header))
             headerJson shouldContain "\"kid\":\"${config().nhnOAuth.keyId.value}\""
-            headerJson shouldContain "\"alg\":\"RS256\""
+            headerJson shouldContain "\"alg\":\"PS256\""
             headerJson shouldContain "\"typ\":\"client-authentication+jwt\""
         }
     }
