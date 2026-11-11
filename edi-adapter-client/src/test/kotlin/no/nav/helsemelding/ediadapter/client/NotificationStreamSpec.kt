@@ -6,6 +6,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
+import io.ktor.client.plugins.HttpRequestRetry
 import io.ktor.client.plugins.api.createClientPlugin
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.plugins.sse.SSE
@@ -648,6 +649,7 @@ private fun event(offset: Long) = "event: notification\ndata: ${Json.encodeToStr
 
 private fun ApplicationTestBuilder.streamingClient() = createClient {
     expectSuccess = false
+    install(HttpRequestRetry) { noRetry() }
     install(SSE) { maxReconnectionAttempts = 0 }
 }
 

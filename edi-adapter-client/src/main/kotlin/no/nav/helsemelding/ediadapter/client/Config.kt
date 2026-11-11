@@ -7,7 +7,8 @@ internal data class Config(
     val azureAuth: AzureAuth,
     val httpClient: HttpClient,
     val httpTokenClient: HttpClient,
-    val ediAdapterServer: EdiAdapterServer
+    val ediAdapterServer: EdiAdapterServer,
+    val ediAdapterClient: EdiAdapterClient
 ) {
     data class AzureAuth(
         val azureGrantType: AzureGrantType,
@@ -34,5 +35,9 @@ internal data class Config(
 
     data class EdiAdapterServer(
         val url: URL
+    )
+
+    data class EdiAdapterClient(
+        val maxHttpRetries: Int
     )
 }

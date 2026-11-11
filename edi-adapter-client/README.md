@@ -40,7 +40,21 @@ Cancel active streams before closing the client.
 | `ping` | Check connectivity to NHN |
 
 Calls return `Either<EdiAdapterError, T>` with `Api`, `Transport` or `Decoding` errors.
-Cancellation propagates. Ordinary HTTP calls are not retried automatically.
+Cancellation propagates, including while waiting to retry.
+
+## HTTP retries
+
+GET requests, `postMessage` and `postApprec` retry transient network and HTTP failures with exponential
+backoff and jitter. Other write operations are not retried.
+
+Hoplite's `ediAdapterClient.maxHttpRetries` defaults to `3` additional attempts. Override it with
+`EDI_ADAPTER_CLIENT_MAX_HTTP_RETRIES` or the constructor's `maxHttpRetries` parameter; `0` disables retries.
+
+Retries of `postMessage` and `postApprec` may create duplicate submissions with new reference Ids if an
+earlier attempt was processed but its response was lost. Only the final attempt's result is returned.
+
+`scopedAuthHttpClient` installs the required plugin. Custom factories must install
+`HttpRequestRetry { noRetry() }` before `HttpTimeout`. Notification streams use a separate reconnect policy.
 
 ## Notification streaming
 

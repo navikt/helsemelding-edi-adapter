@@ -3,6 +3,7 @@ package no.nav.helsemelding.ediadapter.client
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.HttpRequestRetry
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.auth.Auth
 import io.ktor.client.plugins.auth.providers.BearerTokens
@@ -41,6 +42,7 @@ private fun httpClient(
     HttpClient(CIO) {
         expectSuccess = false
         install(SSE) { maxReconnectionAttempts = 0 }
+        install(HttpRequestRetry) { noRetry() }
         install(HttpTimeout) {
             connectTimeoutMillis = config().httpClient.connectionTimeout.toMillis()
         }

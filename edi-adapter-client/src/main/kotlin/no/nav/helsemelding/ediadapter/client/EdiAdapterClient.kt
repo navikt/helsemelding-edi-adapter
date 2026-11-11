@@ -13,6 +13,9 @@ import arrow.resilience.Schedule
 import arrow.resilience.Schedule.Decision.Continue
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.HttpRequestRetry
+import io.ktor.client.plugins.plugin
+import io.ktor.client.plugins.retry
 import io.ktor.client.plugins.sse.ClientSSESession
 import io.ktor.client.plugins.sse.SSEClientException
 import io.ktor.client.plugins.sse.serverSentEventsSession
@@ -33,6 +36,7 @@ import io.ktor.http.HttpMethod.Companion.Put
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -62,6 +66,7 @@ import no.nav.helsemelding.ediadapter.model.v3.PostMessageResponse
 import no.nav.helsemelding.ediadapter.model.v3.SetMshConfigurationsRequest
 import no.nav.helsemelding.ediadapter.model.v3.UnreadNotification
 import java.io.IOException
+import javax.net.ssl.SSLException
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
@@ -71,7 +76,8 @@ private val log = KotlinLogging.logger {}
  * Typed client for the EDI Adapter's V3 API, including notification streaming through [Flow].
  *
  * Requests return [Either] with an [EdiAdapterError] on failure. Notification streams reconnect
- * automatically on transient failures; ordinary HTTP requests are not retried. Cancellation propagates.
+ * automatically on transient failures. GET requests, [postMessage] and [postApprec] retry transient
+ * failures with bounded attempts. Other writes are not retried. Cancellation propagates.
  *
  * Cancel active notification collections before calling [close] to release the client's resources.
  */
@@ -229,6 +235,9 @@ interface EdiAdapterClient : AutoCloseable {
      *
      * Acceptance does not mean that delivery or application processing has completed; use [getMessageStatus]
      * or notifications to follow progress.
+     * Transient failures are retried with the same payload. If an earlier attempt was processed but its
+     * response was lost, retrying may submit the same document again with a new reference ID.
+     * A final failure does not guarantee that no submission was accepted.
      *
      * @param request Encoded business document, sender and receiver her ids, content metadata and application details.
      * @return [Either.Right] containing the accepted submission's [PostMessageResponse], or [Either.Left]
@@ -264,6 +273,10 @@ interface EdiAdapterClient : AutoCloseable {
 
     /**
      * Submits an application receipt for a received message.
+     *
+     * Transient failures are retried with the same payload. If an earlier attempt was processed but its
+     * response was lost, retrying may generate and send another receipt with a new reference ID.
+     * A final failure does not guarantee that no submission was accepted.
      *
      * @param id Identifier of the original message being acknowledged.
      * @param request Receipt sender her id, processing status, application details and any rejection errors.
@@ -315,9 +328,19 @@ interface EdiAdapterClient : AutoCloseable {
     override fun close()
 }
 
+/**
+ * @param clientProvider Creates an owned HTTP client with `HttpRequestRetry` installed and disabled
+ *     by default. [scopedAuthHttpClient] provides this configuration.
+ * @param maxHttpRetries Maximum additional attempts for GET requests, [postMessage] and [postApprec];
+ *     defaults to the Hoplite `ediAdapterClient.maxHttpRetries` setting. Zero disables HTTP retries.
+ *     Retries HTTP 408, 429, 500, 502, 503 and 504, network I/O failures (excluding SSL failures),
+ *     and request timeouts, with exponential backoff and jitter. Retried submissions may be duplicated;
+ *     only the last attempt's response is returned. Other write operations are not retried.
+ */
 class HttpEdiAdapterClient(
     clientProvider: () -> HttpClient,
-    ediAdapterUrl: String = config().ediAdapterServer.url.toString()
+    ediAdapterUrl: String = config().ediAdapterServer.url.toString(),
+    private val maxHttpRetries: Int = config().ediAdapterClient.maxHttpRetries
 ) : EdiAdapterClient {
     private val baseUrl = "${ediAdapterUrl.trimEnd('/')}/api/v3"
     private val json = Json { ignoreUnknownKeys = true }
@@ -352,7 +375,7 @@ class HttpEdiAdapterClient(
         request(Post, "notifications/delete") { jsonBody(request) }
 
     override suspend fun postMessage(request: PostMessageRequest): Either<EdiAdapterError, PostMessageResponse> =
-        request(Post, "messages") { jsonBody(request) }
+        request(Post, "messages", retryable = true) { jsonBody(request) }
 
     override suspend fun getMessage(id: Uuid): Either<EdiAdapterError, GetMessageResponse> =
         request(Get, "messages/$id")
@@ -364,7 +387,7 @@ class HttpEdiAdapterClient(
         request(Get, "messages/$id/status")
 
     override suspend fun postApprec(id: Uuid, request: PostAppRecRequest): Either<EdiAdapterError, PostApprecResponse> =
-        request(Post, "messages/$id/apprec") { jsonBody(request) }
+        request(Post, "messages/$id/apprec", retryable = true) { jsonBody(request) }
 
     override suspend fun markMessageAsDownloaded(
         id: Uuid,
@@ -503,13 +526,36 @@ class HttpEdiAdapterClient(
     private suspend inline fun <reified T> request(
         method: HttpMethod,
         path: String,
+        retryable: Boolean = method == Get,
         crossinline configure: HttpRequestBuilder.() -> Unit = {}
     ): Either<EdiAdapterError, T> = either {
+        httpClient.plugin(HttpRequestRetry)
         catch({
             val response = httpClient.request("$baseUrl/$path") {
                 this.method = method
                 accept(ContentType.Application.Json)
                 configure()
+                retry {
+                    if (!retryable || maxHttpRetries == 0) {
+                        noRetry()
+                    } else {
+                        maxRetries = maxHttpRetries
+                        retryIf { _, response ->
+                            response.status.value in setOf(408, 429, 500, 502, 503, 504)
+                        }
+                        retryOnExceptionIf { _, cause ->
+                            cause !is CancellationException &&
+                                cause !is SSLException &&
+                                (cause is IOException)
+                        }
+                        exponentialDelay(
+                            baseDelayMs = 500,
+                            maxDelayMs = 5000,
+                            randomizationMs = 250,
+                            respectRetryAfterHeader = true
+                        )
+                    }
+                }
             }
                 .withLogging()
             readResponse<T>(response)
