@@ -54,6 +54,7 @@ import no.nav.helsemelding.ediadapter.model.v3.StatusInfo
 import no.nav.helsemelding.ediadapter.model.v3.UnreadNotification
 import java.io.IOException
 import javax.net.ssl.SSLException
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.uuid.Uuid
 
 class EdiAdapterClientSpec : StringSpec(
@@ -367,7 +368,7 @@ class EdiAdapterClientSpec : StringSpec(
             ) { client ->
                 client.ping().shouldBeRight(PingResponse("pong"))
                 requests shouldBe 2
-                delays shouldBe listOf(12_000L)
+                delays shouldBe listOf(12000L)
             }
         }
 
@@ -524,7 +525,7 @@ class EdiAdapterClientSpec : StringSpec(
         }
 
         "cancellation during backoff prevents another attempt" {
-            withTimeout(5_000) {
+            withTimeout(5000.milliseconds) {
                 coroutineScope {
                     val waiting = CompletableDeferred<Unit>()
                     var requests = 0
@@ -532,7 +533,7 @@ class EdiAdapterClientSpec : StringSpec(
                         { requests++; respond("busy", HttpStatusCode.ServiceUnavailable) },
                         retryDelay = { waiting.complete(Unit); awaitCancellation() }
                     ) { client ->
-                        val call = launch { client.ping() }
+                        val call = this@coroutineScope.launch { client.ping() }
                         waiting.await()
                         call.cancelAndJoin()
                         call.isCancelled shouldBe true
