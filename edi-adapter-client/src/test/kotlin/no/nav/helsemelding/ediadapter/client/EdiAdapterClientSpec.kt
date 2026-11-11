@@ -10,6 +10,8 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.plugins.HttpRequestRetry
+import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.HttpResponseData
 import io.ktor.http.HttpHeaders
@@ -19,6 +21,12 @@ import io.ktor.http.content.TextContent
 import io.ktor.http.fullPath
 import io.ktor.http.headersOf
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import no.nav.helsemelding.ediadapter.model.common.GetBusinessDocumentResponse
@@ -45,6 +53,8 @@ import no.nav.helsemelding.ediadapter.model.v3.SetMshConfigurationsRequest
 import no.nav.helsemelding.ediadapter.model.v3.StatusInfo
 import no.nav.helsemelding.ediadapter.model.v3.UnreadNotification
 import java.io.IOException
+import javax.net.ssl.SSLException
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.uuid.Uuid
 
 class EdiAdapterClientSpec : StringSpec(
@@ -288,8 +298,209 @@ class EdiAdapterClientSpec : StringSpec(
         }
 
         "invalid successful responses return a decoding error" {
-            withClient({ respond("not JSON") }) { client ->
+            var requests = 0
+            withClient({ requests++; respond("not JSON") }) { client ->
                 client.ping().shouldBeLeft().shouldBeInstanceOf<EdiAdapterError.Decoding>()
+                requests shouldBe 1
+            }
+        }
+
+        "GET requests retry transient HTTP statuses and succeed" {
+            for (status in listOf(408, 429, 500, 502, 503, 504)) {
+                var requests = 0
+                withClient({
+                    if (++requests == 1) {
+                        respond("temporary failure", HttpStatusCode.fromValue(status))
+                    } else {
+                        respondJson(PingResponse("pong"))
+                    }
+                }) { client ->
+                    client.ping().shouldBeRight(PingResponse("pong"))
+                    requests shouldBe 2
+                }
+            }
+        }
+
+        "GET requests stop after three retries and retain the final problem details" {
+            var requests = 0
+            val problem = MshApiProblemDetails(status = 503, title = "Unavailable")
+            withClient({ requests++; respondJson(problem, HttpStatusCode.ServiceUnavailable) }) { client ->
+                client.ping().shouldBeLeft(EdiAdapterError.Api(503, problem))
+                requests shouldBe 4
+            }
+        }
+
+        "HTTP retry count is configurable and zero disables retries" {
+            for (maxRetries in listOf(0, 1)) {
+                var requests = 0
+                withClient(
+                    { requests++; respond("unavailable", HttpStatusCode.ServiceUnavailable) },
+                    maxHttpRetries = maxRetries
+                ) { client ->
+                    client.ping().shouldBeLeft(EdiAdapterError.Api(503))
+                    requests shouldBe maxRetries + 1
+                }
+            }
+        }
+
+        "GET requests do not retry other HTTP failures" {
+            for (status in listOf(400, 401, 403, 404, 501)) {
+                var requests = 0
+                withClient({ requests++; respond("failure", HttpStatusCode.fromValue(status)) }) { client ->
+                    client.ping().shouldBeLeft(EdiAdapterError.Api(status))
+                    requests shouldBe 1
+                }
+            }
+        }
+
+        "GET requests respect Retry-After even above the backoff cap" {
+            var requests = 0
+            val delays = mutableListOf<Long>()
+            withClient(
+                {
+                    if (++requests == 1) {
+                        respond("busy", HttpStatusCode.TooManyRequests, headersOf(HttpHeaders.RetryAfter, "12"))
+                    } else {
+                        respondJson(PingResponse("pong"))
+                    }
+                },
+                retryDelay = { delays.add(it) }
+            ) { client ->
+                client.ping().shouldBeRight(PingResponse("pong"))
+                requests shouldBe 2
+                delays shouldBe listOf(12000L)
+            }
+        }
+
+        "GET requests retry network failures and retain the last transport error" {
+            var requests = 0
+            withClient({ throw IOException("Connection lost on attempt ${++requests}") }) { client ->
+                val error = client.ping().shouldBeLeft().shouldBeInstanceOf<EdiAdapterError.Transport>()
+                requests shouldBe 4
+                error.cause.shouldBeInstanceOf<IOException>().message shouldBe "Connection lost on attempt 4"
+            }
+        }
+
+        "GET requests recover after a request timeout" {
+            var requests = 0
+            withClient({ request ->
+                if (++requests == 1) throw HttpRequestTimeoutException(request)
+                respondJson(PingResponse("pong"))
+            }) { client ->
+                client.ping().shouldBeRight(PingResponse("pong"))
+                requests shouldBe 2
+            }
+        }
+
+        "custom HTTP clients must install the retry plugin" {
+            HttpEdiAdapterClient(
+                clientProvider = { HttpClient(MockEngine) { engine { addHandler { respondJson(PingResponse("pong")) } } } },
+                ediAdapterUrl = "http://localhost"
+            ).use { client ->
+                shouldThrow<IllegalStateException> { client.ping() }
+                    .message!!.contains("RetryFeature") shouldBe true
+            }
+        }
+
+        "SSL and unexpected failures are not retried" {
+            for (failure in listOf(SSLException("TLS failure"), IllegalStateException("Misconfigured"))) {
+                var requests = 0
+                withClient({ requests++; throw failure }) { client ->
+                    client.ping().shouldBeLeft().shouldBeInstanceOf<EdiAdapterError.Transport>()
+                    requests shouldBe 1
+                }
+            }
+        }
+
+        "postMessage retries transient HTTP failures with the same payload" {
+            val message = PostMessageRequest("PHhtbC8+", 123, listOf(456), "application/xml", "base64", "DIALOG_HELSEFAGLIG")
+            for (status in listOf(408, 429, 500, 502, 503, 504)) {
+                var requests = 0
+                withClient({ request ->
+                    request.method shouldBe HttpMethod.Post
+                    request.url.fullPath shouldBe "/api/v3/messages"
+                    request.body<PostMessageRequest>() shouldBe message
+                    if (++requests == 1) {
+                        respond("temporary failure", HttpStatusCode.fromValue(status))
+                    } else {
+                        respondJson(PostMessageResponse(id), HttpStatusCode.Accepted)
+                    }
+                }) { client ->
+                    client.postMessage(message).shouldBeRight(PostMessageResponse(id))
+                    requests shouldBe 2
+                }
+            }
+        }
+
+        "postApprec retries transient HTTP failures with the same message id and payload" {
+            val apprec = PostAppRecRequest(123, AppRecStatus.OK)
+            for (status in listOf(408, 429, 500, 502, 503, 504)) {
+                var requests = 0
+                withClient({ request ->
+                    request.method shouldBe HttpMethod.Post
+                    request.url.fullPath shouldBe "/api/v3/messages/$id/apprec"
+                    request.body<PostAppRecRequest>() shouldBe apprec
+                    if (++requests == 1) {
+                        respond("temporary failure", HttpStatusCode.fromValue(status))
+                    } else {
+                        respondJson(PostApprecResponse(id), HttpStatusCode.Accepted)
+                    }
+                }) { client ->
+                    client.postApprec(id, apprec).shouldBeRight(PostApprecResponse(id))
+                    requests shouldBe 2
+                }
+            }
+        }
+
+        "message submissions retry transport failures within the configured limit" {
+            val message = PostMessageRequest("PHhtbC8+", 123, listOf(456), "application/xml", "base64", "DIALOG_HELSEFAGLIG")
+            val apprec = PostAppRecRequest(123, AppRecStatus.OK)
+            for (maxRetries in listOf(0, 1, 3)) {
+                var requests = 0
+                withClient(
+                    { requests++; throw IOException("Connection lost") },
+                    maxHttpRetries = maxRetries
+                ) { client ->
+                    client.postMessage(message).shouldBeLeft().shouldBeInstanceOf<EdiAdapterError.Transport>()
+                    requests shouldBe maxRetries + 1
+                    client.postApprec(id, apprec).shouldBeLeft().shouldBeInstanceOf<EdiAdapterError.Transport>()
+                    requests shouldBe 2 * (maxRetries + 1)
+                }
+            }
+        }
+
+        "message submissions stop at the HTTP retry limit and retain the final problem" {
+            val message = PostMessageRequest("PHhtbC8+", 123, listOf(456), "application/xml", "base64", "DIALOG_HELSEFAGLIG")
+            val problem = MshApiProblemDetails(status = 503, title = "Unavailable")
+            var requests = 0
+            withClient({ requests++; respondJson(problem, HttpStatusCode.ServiceUnavailable) }) { client ->
+                client.postMessage(message).shouldBeLeft(EdiAdapterError.Api(503, problem))
+                requests shouldBe 4
+                client.postApprec(id, PostAppRecRequest(123, AppRecStatus.OK)).shouldBeLeft(EdiAdapterError.Api(503, problem))
+                requests shouldBe 8
+            }
+        }
+
+        "message submissions do not retry validation failures" {
+            val message = PostMessageRequest("PHhtbC8+", 123, listOf(456), "application/xml", "base64", "DIALOG_HELSEFAGLIG")
+            var requests = 0
+            withClient({ requests++; respond("invalid", HttpStatusCode.BadRequest) }) { client ->
+                client.postMessage(message).shouldBeLeft(EdiAdapterError.Api(400))
+                client.postApprec(id, PostAppRecRequest(123, AppRecStatus.OK)).shouldBeLeft(EdiAdapterError.Api(400))
+                requests shouldBe 2
+            }
+        }
+
+        "other write requests do not retry transient HTTP failures" {
+            var requests = 0
+            withClient({ requests++; respond("unavailable", HttpStatusCode.ServiceUnavailable) }) { client ->
+                client.deleteNotifications(DeleteNotificationsRequest(listOf(id))).shouldBeLeft(EdiAdapterError.Api(503))
+                client.markMessageAsDownloaded(id, MarkAsDownloadedRequest(123)).shouldBeLeft(EdiAdapterError.Api(503))
+                client.setMshConfigurations(
+                    SetMshConfigurationsRequest(listOf(MshConfiguration(123, ReceiveNotificationChannel.API)))
+                ).shouldBeLeft(EdiAdapterError.Api(503))
+                client.deleteMshConfigurations(listOf(123)).shouldBeLeft(EdiAdapterError.Api(503))
+                requests shouldBe 4
             }
         }
 
@@ -306,8 +517,29 @@ class EdiAdapterClientSpec : StringSpec(
 
         "cancellation propagates" {
             val failure = CancellationException("Cancelled")
-            withClient({ throw failure }) { client ->
+            var requests = 0
+            withClient({ requests++; throw failure }) { client ->
                 shouldThrow<CancellationException> { client.ping() }.message shouldBe failure.message
+                requests shouldBe 1
+            }
+        }
+
+        "cancellation during backoff prevents another attempt" {
+            withTimeout(5000.milliseconds) {
+                coroutineScope {
+                    val waiting = CompletableDeferred<Unit>()
+                    var requests = 0
+                    withClient(
+                        { requests++; respond("busy", HttpStatusCode.ServiceUnavailable) },
+                        retryDelay = { waiting.complete(Unit); awaitCancellation() }
+                    ) { client ->
+                        val call = this@coroutineScope.launch { client.ping() }
+                        waiting.await()
+                        call.cancelAndJoin()
+                        call.isCancelled shouldBe true
+                        requests shouldBe 1
+                    }
+                }
             }
         }
     }
@@ -317,11 +549,23 @@ private inline fun <reified T> HttpRequestData.body(): T = Json.decodeFromString
 
 private suspend fun withClient(
     handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
+    maxHttpRetries: Int = 3,
+    retryDelay: suspend (Long) -> Unit = {},
     block: suspend (EdiAdapterClient) -> Unit
 ) {
     HttpEdiAdapterClient(
-        clientProvider = { HttpClient(MockEngine) { engine { addHandler(handler) }; expectSuccess = false } },
-        ediAdapterUrl = "http://localhost/"
+        clientProvider = {
+            HttpClient(MockEngine) {
+                engine { addHandler(handler) }
+                expectSuccess = false
+                install(HttpRequestRetry) {
+                    noRetry()
+                    delay { retryDelay(it) }
+                }
+            }
+        },
+        ediAdapterUrl = "http://localhost/",
+        maxHttpRetries = maxHttpRetries
     )
         .use { block(it) }
 }
