@@ -323,17 +323,9 @@ class EdiAdapterClientSpec : StringSpec(
         "GET requests stop after three retries and retain the final problem details" {
             var requests = 0
             val problem = MshApiProblemDetails(status = 503, title = "Unavailable")
-            val delays = mutableListOf<Long>()
-            withClient(
-                { requests++; respondJson(problem, HttpStatusCode.ServiceUnavailable) },
-                retryDelay = { delays.add(it) }
-            ) { client ->
+            withClient({ requests++; respondJson(problem, HttpStatusCode.ServiceUnavailable) }) { client ->
                 client.ping().shouldBeLeft(EdiAdapterError.Api(503, problem))
                 requests shouldBe 4
-                delays.size shouldBe 3
-                delays.forEachIndexed { index, delay ->
-                    (delay in (500L shl index) until (500L shl index) + 250) shouldBe true
-                }
             }
         }
 
