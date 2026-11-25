@@ -9,8 +9,11 @@ import arrow.core.raise.Raise
 import arrow.core.raise.catch
 import arrow.core.raise.either
 import arrow.core.raise.ensure
+import arrow.fx.coroutines.onCancel
 import arrow.resilience.Schedule
 import arrow.resilience.Schedule.Decision.Continue
+import arrow.resilience.Schedule.Decision.Done
+import arrow.resilience.ScheduleStep
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpRequestRetry
@@ -28,6 +31,7 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.client.statement.request
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpMethod.Companion.Delete
 import io.ktor.http.HttpMethod.Companion.Get
@@ -40,12 +44,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onCompletion
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -66,7 +70,10 @@ import no.nav.helsemelding.ediadapter.model.v3.PostMessageResponse
 import no.nav.helsemelding.ediadapter.model.v3.SetMshConfigurationsRequest
 import no.nav.helsemelding.ediadapter.model.v3.UnreadNotification
 import java.io.IOException
+import java.net.UnknownHostException
+import java.nio.channels.UnresolvedAddressException
 import javax.net.ssl.SSLException
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
@@ -425,90 +432,143 @@ class HttpEdiAdapterClient(
         offset: Long? = null,
         offsetOf: (T) -> Long? = { null }
     ): Flow<Either<EdiAdapterError, T>> = flow {
-        either {
+        val streamId = Uuid.random().toString()
+        val stream = "streamId=$streamId path=$path"
+        var attempt = 0L
+        val notifications = flow<Either<EdiAdapterError, T>> {
             var resumeOffset = offset
-            var reconnect = reconnectSchedule.step
-            while (true) {
-                val finished = collectNotifications(
+            var nextStep: ScheduleStep<Unit, Duration>? = reconnectSchedule.step
+
+            while (nextStep != null) {
+                var backoff = nextStep
+                attempt++
+                val connection = "$stream attempt=$attempt"
+                log.info { "Opening SSE connection $connection" }
+                val result = collectNotifications(
                     serializer = serializer,
-                    openSession = { openNotificationSession(herIds, path, resumeOffset) }
+                    connection = connection,
+                    openSession = { openNotificationSession(herIds, path, resumeOffset, streamId) }
                 ) { notification ->
                     emit(Right(notification))
                     resumeOffset = offsetOf(notification)
-                    reconnect = reconnectSchedule.step
+                    backoff = reconnectSchedule.step
                 }
-                    .getOrElse { error ->
-                        ensure(shouldReconnect(error)) { emit(Left(error)) }
-                        false
+
+                val error = result.leftOrNull()
+                nextStep = when {
+                    result.getOrNull() == HttpStatusCode.NoContent -> null
+
+                    error != null && !shouldReconnect(error) -> {
+                        log.warn { "SSE stopped $connection reason=${error.streamFailureReason()}" }
+                        emit(Left(error))
+                        null
                     }
-                ensure(!finished) { }
-                // Offset-based streams resume via the notification offset; unread streams reconnect without one.
-                val decision = reconnect(Unit)
-                ensure(decision is Continue) { }
-                log.debug { "Reconnecting notification stream in ${decision.delay}" }
-                delay(decision.delay)
-                reconnect = decision.step
+
+                    else -> awaitReconnect(backoff, connection, error?.streamFailureReason() ?: "EOF")
+                }
             }
         }
+
+        emitNotifications(notifications) { "$stream attempt=$attempt" }
     }
+
+    private suspend fun <T> FlowCollector<T>.emitNotifications(
+        notifications: Flow<T>,
+        currentConnection: () -> String
+    ) = Either.catch {
+        onCancel({ emitAll(notifications) }) {
+            log.info { "SSE collection cancelled ${currentConnection()}" }
+        }
+    }
+        .getOrElse { cause ->
+            log.error { "SSE collection failed ${currentConnection()} cause=${cause.javaClass.simpleName}" }
+            throw cause
+        }
 
     override fun close() {
         httpClient.close()
     }
 
+    private suspend fun awaitReconnect(
+        backoff: ScheduleStep<Unit, Duration>,
+        connection: String,
+        reason: String
+    ): ScheduleStep<Unit, Duration>? = when (val decision = backoff(Unit)) {
+        is Continue -> {
+            log.warn { "SSE attempt ended $connection reason=$reason, retrying in ${decision.delay}" }
+            delay(decision.delay)
+            decision.step
+        }
+
+        is Done -> {
+            log.warn { "SSE reconnect schedule ended $connection reason=$reason" }
+            null
+        }
+    }
+
     private suspend fun <T> collectNotifications(
         serializer: KSerializer<T>,
+        connection: String,
         openSession: suspend () -> ClientSSESession,
         onNotification: suspend (T) -> Unit
-    ): Either<EdiAdapterError, Boolean> = either {
-        var finished = false
-        flow {
-            val session = openSession()
-            finished = session.call.response.status == HttpStatusCode.NoContent
-            emitAll(session.notifications(serializer))
+    ): Either<EdiAdapterError, HttpStatusCode> = either {
+        val session = catch({ openSession() }) { raise(streamError(it)) }
+        try {
+            val status = session.call.response.status
+            if (status == HttpStatusCode.NoContent) {
+                log.info { "SSE stopped $connection reason=HTTP 204" }
+                return Right(status)
+            }
+
+            log.info { "SSE connected $connection" }
+            session.incoming
+                .filter { it.event == "notification" }
+                .map { event ->
+                    val data = event.data ?: throw SerializationException("Missing notification data")
+                    json.decodeFromString(serializer, data)
+                }
+                .catch { raise(streamError(it)) }
+                .collect { onNotification(it) }
+            status
+        } finally {
+            session.cancel()
         }
-            .catch { cause -> raise(streamError(cause)) }
-            .collect { onNotification(it) }
-        finished
     }
 
     private suspend fun openNotificationSession(
         herIds: List<Int>,
         path: String,
-        offset: Long?
-    ): ClientSSESession {
-        log.debug { "Opening $path for her ids: $herIds from offset $offset" }
-        return httpClient.serverSentEventsSession("$baseUrl/$path") {
-            herIds.forEach { parameter("herIds", it) }
-            parameter("offset", offset)
-        }
-            .also { session ->
-                log.debug { "Notification stream response: ${session.call.response.status}" }
-            }
+        offset: Long?,
+        streamId: String
+    ): ClientSSESession = httpClient.serverSentEventsSession("$baseUrl/$path") {
+        headers.append(HttpHeaders.XCorrelationId, streamId)
+        herIds.forEach { parameter("herIds", it) }
+        parameter("offset", offset)
     }
-
-    private fun <T> ClientSSESession.notifications(serializer: KSerializer<T>): Flow<T> = incoming
-        .filter { it.event == "notification" }
-        .map { event ->
-            json.decodeFromString(serializer, event.data ?: throw SerializationException("Missing notification data"))
-        }
-        .onCompletion {
-            cancel()
-            log.debug { "Notification stream closed" }
-        }
 
     private suspend fun streamError(cause: Throwable): EdiAdapterError {
         val error = cause.nonFatalOrThrow()
         val response = (error as? SSEClientException)?.response
-        log.debug { "Notification stream failed: ${error::class.simpleName}, HTTP status: ${response?.status}" }
         val underlying = generateSequence(error) { (it as? SSEClientException)?.cause }
             .last().nonFatalOrThrow()
         return when {
             response != null && !response.status.isSuccess() -> apiError(response)
             underlying is SerializationException -> EdiAdapterError.Decoding(underlying)
-            underlying is IOException -> EdiAdapterError.Transport(underlying)
+            underlying is IOException || underlying is UnresolvedAddressException -> EdiAdapterError.Transport(
+                underlying
+            )
+
             response != null -> EdiAdapterError.Decoding(error)
             else -> throw underlying
+        }
+    }
+
+    private fun EdiAdapterError.streamFailureReason(): String = when (this) {
+        is EdiAdapterError.Api -> "HTTP $status"
+        is EdiAdapterError.Decoding -> "invalid SSE response (${cause.javaClass.simpleName})"
+        is EdiAdapterError.Transport -> when (cause) {
+            is UnresolvedAddressException, is UnknownHostException -> "DNS lookup failed (${cause.javaClass.simpleName})"
+            else -> "transport failure (${cause.javaClass.simpleName})"
         }
     }
 

@@ -65,6 +65,9 @@ Routes are versioned under `/api/v1`, `/api/v2`, and `/api/v3`. Their upstream `
 
 V3 supports notification polling and SSE streaming. Consumers must reconnect when a stream closes and resume from the last successfully processed offset.
 
+Both SSE routes log the NHN connection opening and closing under the client's `streamId`. A relay failure
+identifies whether the adapter was reading from NHN or writing to the consumer.
+
 The unread endpoints use `herIds` without an offset. Unread polling accepts `notificationsToFetch` (1–1000, NHN default: 100) and returns `unreadNotifications`. Unread SSE forwards the NHN events unchanged. After processing, delete notifications using `POST /api/v3/notifications/delete` with their `notificationIds`; a successful request returns `204`.
 
 NHN errors are forwarded unchanged; local errors use `MshApiProblemDetails`. The Kotlin client uses V3, including automatic SSE reconnection from the last emitted notification, starting from a caller-provided offset.

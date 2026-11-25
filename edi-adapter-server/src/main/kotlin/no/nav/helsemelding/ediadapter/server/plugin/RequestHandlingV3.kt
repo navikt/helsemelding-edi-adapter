@@ -1,7 +1,9 @@
 package no.nav.helsemelding.ediadapter.server.plugin
 
+import arrow.core.Either
 import arrow.core.raise.Raise
 import arrow.core.raise.recover
+import arrow.fx.coroutines.onCancel
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.HttpStatement
@@ -26,12 +28,15 @@ import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytesWriter
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.RoutingContext
+import io.ktor.utils.io.InternalAPI
 import io.ktor.utils.io.readAvailable
 import io.ktor.utils.io.writeFully
 import no.nav.helsemelding.ediadapter.model.v3.MshApiProblemDetails
 import no.nav.helsemelding.ediadapter.server.MessageError
 import no.nav.helsemelding.ediadapter.server.toContent
 import kotlin.time.Clock
+import kotlin.time.TimeSource
+import kotlin.uuid.Uuid
 
 private val log = KotlinLogging.logger { }
 
@@ -51,10 +56,87 @@ internal suspend fun RoutingContext.handleV3Request(
 internal suspend fun RoutingContext.handleV3Stream(
     body: suspend Raise<MessageError>.() -> HttpStatement
 ) {
-    recover(
-        { body().execute { response -> call.respondV3Stream(response) } },
-        { e: MessageError -> call.respondV3Error(e.toContent()) }
-    ) { t: Throwable -> call.handleV3Exception(t) }
+    val relay = SseRelay(call)
+    Either.catch {
+        onCancel(
+            { recover({ relay.forward(body()) }) { error: MessageError -> relay.reject(error) } },
+            { log.info { relay.endReason("cancelled") } }
+        )
+    }
+        .onLeft { cause ->
+            val message = relay.endReason("failed", cause)
+            call.handleV3Exception(
+                cause,
+                logCommitted = { log.warn { message } },
+                logUnexpected = { log.error { message } }
+            )
+        }
+}
+
+private class SseRelay(private val call: ApplicationCall) {
+    private val streamId = call.request.headers[HttpHeaders.XCorrelationId]
+        ?.let { Either.catch { Uuid.parse(it) }.getOrNull() } ?: Uuid.random()
+    private val stream = "streamId=$streamId path=${call.request.path()}"
+    private val started = TimeSource.Monotonic.markNow()
+    private var operation = "opening the NHN connection"
+
+    fun endReason(outcome: String, cause: Throwable? = null): String = buildString {
+        append("SSE $outcome while $operation $stream")
+        cause?.let { append(" cause=${it.sseCauseTypes()}") }
+        append(" duration=${started.elapsedNow()}")
+    }
+
+    suspend fun reject(error: MessageError) {
+        val content = error.toContent()
+        log.warn { "SSE request rejected $stream reason=HTTP ${(content.status ?: BadRequest).value}" }
+        call.respondV3Error(content)
+    }
+
+    suspend fun forward(statement: HttpStatement) {
+        log.info { "Opening SSE connection to NHN $stream" }
+        statement.execute { upstream ->
+            when (upstream.status) {
+                HttpStatusCode.OK -> forwardEvents(upstream)
+                else -> forwardStatus(upstream)
+            }
+        }
+    }
+
+    private suspend fun forwardStatus(upstream: HttpResponse) {
+        val message = "SSE connection to NHN ended $stream reason=HTTP ${upstream.status.value}"
+        when (upstream.status) {
+            HttpStatusCode.NoContent -> log.info { message }
+            else -> log.warn { message }
+        }
+        operation = "forwarding the NHN response to the client"
+        call.respondV3(upstream)
+    }
+
+    @OptIn(InternalAPI::class)
+    private suspend fun forwardEvents(upstream: HttpResponse) {
+        log.info { "SSE connected to NHN $stream" }
+        operation = "writing to the client"
+        call.response.headers.append(HttpHeaders.CacheControl, "no-cache")
+        call.response.headers.append("X-Accel-Buffering", "no")
+        call.respondBytesWriter(contentType = ContentType.Text.EventStream) {
+            operation = "reading from NHN"
+            val source = upstream.bodyAsChannel()
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var count = source.readAvailable(buffer)
+            while (count >= 0) {
+                operation = "writing to the client"
+                writeFully(buffer, 0, count)
+                flush()
+                operation = "reading from NHN"
+                count = source.readAvailable(buffer)
+            }
+            // Ktor's bodyAsChannel copy can end normally when the network channel already failed.
+            val closeCause = source.closedCause ?: upstream.rawContent.closedCause
+            closeCause?.let { throw it }
+            operation = "finishing the response to the client"
+        }
+        log.info { "SSE closed $stream reason=NHN EOF duration=${started.elapsedNow()}" }
+    }
 }
 
 private suspend fun ApplicationCall.respondV3(
@@ -71,42 +153,35 @@ private suspend fun ApplicationCall.respondV3(
     }
 }
 
-private suspend fun ApplicationCall.respondV3Stream(response: HttpResponse) =
-    when (response.status) {
-        HttpStatusCode.OK -> {
-            this.response.headers.append(HttpHeaders.CacheControl, "no-cache")
-            this.response.headers.append("X-Accel-Buffering", "no")
-            respondBytesWriter(contentType = ContentType.Text.EventStream) {
-                val source = response.bodyAsChannel()
-                // Copy in chunks of up to 8 KiB (not an SSE requirement).
-                // Reads do not wait for the buffer to fill; each chunk is flushed immediately.
-                val buffer = ByteArray(8192)
-                while (true) {
-                    val count = source.readAvailable(buffer)
-                    if (count == -1) break
-                    writeFully(buffer, 0, count)
-                    flush()
-                }
-            }
-        }
-
-        else -> respondV3(response)
-    }
+private fun Throwable.sseCauseTypes(): String =
+    generateSequence(this) { it.cause }
+        .take(8)
+        .map { it.javaClass.simpleName }
+        .distinct()
+        .joinToString(" -> ")
 
 private suspend fun ApplicationCall.respondV3Error(message: TextContent) =
     respondV3Problem(message.status ?: BadRequest, message.text)
 
-private suspend fun ApplicationCall.handleV3Exception(t: Throwable) {
-    // Once the response is committed, a new error response cannot be sent.
-    if (response.isCommitted) throw t
-    when (t) {
-        is BadRequestException ->
+private suspend fun ApplicationCall.handleV3Exception(
+    t: Throwable,
+    logCommitted: () -> Unit = {},
+    logUnexpected: () -> Unit = { log.error(t) { "Unexpected error processing request" } }
+) {
+    when {
+        response.isCommitted -> {
+            logCommitted()
+            throw t
+        }
+
+        t is BadRequestException ->
             respondV3Problem(BadRequest, detail = t.message)
-        is UnsupportedMediaTypeException,
-        is CannotTransformContentToTypeException ->
+
+        t is UnsupportedMediaTypeException || t is CannotTransformContentToTypeException ->
             respondV3Problem(UnsupportedMediaType, detail = t.message)
+
         else -> {
-            log.error(t) { "Unexpected error processing request" }
+            logUnexpected()
             respondV3Problem(InternalServerError, detail = null)
         }
     }
