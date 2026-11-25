@@ -11,6 +11,7 @@ import io.ktor.client.plugins.api.createClientPlugin
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.plugins.sse.SSE
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
@@ -31,6 +32,7 @@ import no.nav.helsemelding.ediadapter.model.v3.Notification
 import no.nav.helsemelding.ediadapter.model.v3.NotificationType
 import no.nav.helsemelding.ediadapter.model.v3.UnreadNotification
 import java.io.IOException
+import java.nio.channels.UnresolvedAddressException
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.uuid.Uuid
 
@@ -169,6 +171,41 @@ class NotificationStreamSpec : StringSpec(
                     }
                     notifications.map { it.shouldBeRight().offset } shouldBe listOf(1L, 2L)
                     offsets shouldBe listOf("0", "1")
+                }
+            }
+        }
+
+        "streamNotifications recovers from DNS failure on reconnect with the same offset and stream id" {
+            testApplication {
+                val attempts = mutableListOf<String?>()
+                val streamIds = mutableSetOf<Uuid>()
+                val failReconnect = createClientPlugin("FailDnsOnReconnect") {
+                    onRequest { request, _ ->
+                        attempts += request.url.parameters["offset"]
+                        streamIds += Uuid.parse(requireNotNull(request.headers[HttpHeaders.XCorrelationId]))
+                        if (attempts.size == 2) throw UnresolvedAddressException()
+                    }
+                }
+                application {
+                    routing {
+                        get("/api/v3/notifications/stream") {
+                            val offset = requireNotNull(call.request.queryParameters["offset"]).toLong()
+                            call.respondText(event(offset + 1), ContentType.Text.EventStream)
+                        }
+                    }
+                }
+                HttpEdiAdapterClient({
+                    createClient {
+                        install(SSE) { maxReconnectionAttempts = 0 }
+                        install(failReconnect)
+                    }
+                }, "http://localhost").use { client ->
+                    val results = withTimeout(10000.milliseconds) {
+                        client.streamNotifications(123, offset = 41).take(2).toList()
+                    }
+                    results.map { it.shouldBeRight().offset } shouldBe listOf(42L, 43L)
+                    attempts shouldBe listOf("41", "42", "42")
+                    streamIds.size shouldBe 1
                 }
             }
         }

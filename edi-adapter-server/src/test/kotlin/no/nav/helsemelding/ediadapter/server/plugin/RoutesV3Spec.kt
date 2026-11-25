@@ -1,12 +1,19 @@
 package no.nav.helsemelding.ediadapter.server.plugin
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.ktor.client.call.body
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.prepareGet
 import io.ktor.client.request.put
@@ -16,6 +23,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.ContentType.Application.Json
 import io.ktor.http.HttpHeaders.Accept
+import io.ktor.http.HttpHeaders.XCorrelationId
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode.Companion.Accepted
 import io.ktor.http.HttpStatusCode.Companion.BadRequest
@@ -31,11 +39,14 @@ import io.ktor.http.content.TextContent
 import io.ktor.http.contentType
 import io.ktor.http.fullPath
 import io.ktor.http.headersOf
+import io.ktor.server.response.respond
+import io.ktor.server.routing.get
 import io.ktor.server.testing.testApplication
 import io.ktor.utils.io.ByteChannel
 import io.ktor.utils.io.readAvailable
 import io.ktor.utils.io.readUTF8Line
 import io.ktor.utils.io.writeStringUtf8
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
@@ -58,8 +69,10 @@ import no.nav.helsemelding.ediadapter.model.v3.SetMshConfigurationsRequest
 import no.nav.helsemelding.ediadapter.server.config
 import no.nav.helsemelding.ediadapter.server.model.PostAppRecRequest
 import no.nav.helsemelding.ediadapter.server.model.PostMessageRequest
+import org.slf4j.LoggerFactory
 import java.io.IOException
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 import io.ktor.http.HttpHeaders.ContentType as ContentTypeHeader
 import kotlinx.serialization.json.Json as JsonUtil
@@ -438,7 +451,8 @@ class RoutesV3Spec : StringSpec(
                 installExternalRoutes(ediClientV3 = ediClientV3)
                 client = createJsonEnabledClient()
 
-                val response = client.get("$ROOT_V3/notifications/unread?herIds=42&herIds=1337&notificationsToFetch=1000")
+                val response =
+                    client.get("$ROOT_V3/notifications/unread?herIds=42&herIds=1337&notificationsToFetch=1000")
 
                 response.status shouldBe OK
                 response.bodyAsText() shouldBe payload
@@ -1036,7 +1050,8 @@ class RoutesV3Spec : StringSpec(
 
             ediClientV3.use {
                 withStreamingServer(ediClientV3) { baseUrl ->
-                    val response = get("$baseUrl$ROOT_V3/notifications/unread/stream?herIds=42&herIds=1337&offset=invalid&notificationsToFetch=invalid")
+                    val response =
+                        get("$baseUrl$ROOT_V3/notifications/unread/stream?herIds=42&herIds=1337&offset=invalid&notificationsToFetch=invalid")
                     response.status shouldBe OK
                     response.contentType() shouldBe ContentType.Text.EventStream
                     response.bodyAsText() shouldBe payload
@@ -1056,7 +1071,9 @@ class RoutesV3Spec : StringSpec(
             val ediClientV3 = fakeEdiClient { request ->
                 request.url.fullPath shouldBe "/notifications/delete"
                 request.method shouldBe HttpMethod.Post
-                request.body<DeleteNotificationsRequest>() shouldBe JsonUtil.decodeFromString<DeleteNotificationsRequest>(payload)
+                request.body<DeleteNotificationsRequest>() shouldBe JsonUtil.decodeFromString<DeleteNotificationsRequest>(
+                    payload
+                )
                 request.body.contentType shouldBe Json
                 respond("", NoContent)
             }
@@ -1591,7 +1608,9 @@ class RoutesV3Spec : StringSpec(
             val ediClientV3 = fakeEdiClient { request ->
                 request.url.fullPath shouldBe "/messages/$V3_MESSAGE_ID/downloaded"
                 request.method shouldBe HttpMethod.Put
-                request.body<MarkAsDownloadedRequest>() shouldBe JsonUtil.decodeFromString<MarkAsDownloadedRequest>(payload)
+                request.body<MarkAsDownloadedRequest>() shouldBe JsonUtil.decodeFromString<MarkAsDownloadedRequest>(
+                    payload
+                )
                 respond(
                     result,
                     NoContent,
@@ -1632,7 +1651,9 @@ class RoutesV3Spec : StringSpec(
             val ediClientV3 = fakeEdiClient { request ->
                 request.url.fullPath shouldBe "/mshconfigurations"
                 request.method shouldBe HttpMethod.Put
-                request.body<SetMshConfigurationsRequest>() shouldBe JsonUtil.decodeFromString<SetMshConfigurationsRequest>(payload)
+                request.body<SetMshConfigurationsRequest>() shouldBe JsonUtil.decodeFromString<SetMshConfigurationsRequest>(
+                    payload
+                )
                 respond(
                     result,
                     NoContent,
@@ -2041,6 +2062,40 @@ class RoutesV3Spec : StringSpec(
             }
         }
 
+        "handleV3Stream logs cancellation once and propagates it" {
+            val cancellation = CancellationException("Stop the stream")
+            val entries = captureStreamLogs { streamId ->
+                testApplication {
+                    routing {
+                        get("/stream") {
+                            shouldThrow<CancellationException> {
+                                handleV3Stream { throw cancellation }
+                            } shouldBe cancellation
+                            call.respond(NoContent)
+                        }
+                    }
+                    client.get("/stream") { header(XCorrelationId, streamId) }.status shouldBe NoContent
+                }
+            }
+            val entry = entries.single()
+            entry.level shouldBe Level.INFO
+            entry.formattedMessage shouldContain "SSE cancelled while opening the NHN connection"
+        }
+
+        "GET /notifications/unread/stream logs a closed upstream channel's cause and stream id" {
+            val source = ByteChannel().apply { cancel(IOException("upstream failed")) }
+            val entries = withTimeout(10.seconds) {
+                captureStreamLogs { streamId -> requestUnreadStream(source, streamId) }
+            }
+
+            entries.any {
+                it.level.isGreaterOrEqual(Level.WARN) &&
+                    "reading from NHN" in it.formattedMessage &&
+                    "IOException" in it.formattedMessage
+            } shouldBe true
+            entries.none { "NHN EOF" in it.formattedMessage } shouldBe true
+        }
+
         "GET /notifications/stream without offset preserves EDI error as JSON" {
             val problem = """{"status":423,"title":"Locked"}"""
 
@@ -2063,3 +2118,32 @@ class RoutesV3Spec : StringSpec(
 )
 
 private inline fun <reified T> HttpRequestData.body(): T = JsonUtil.decodeFromString((body as TextContent).text)
+
+private suspend fun requestUnreadStream(source: ByteChannel, streamId: String) {
+    fakeEdiClient { respond(source, headers = headersOf(ContentTypeHeader, "text/event-stream")) }.use { upstream ->
+        withStreamingServer(upstream) { baseUrl ->
+            try {
+                get("$baseUrl$ROOT_V3/notifications/unread/stream?herIds=42") {
+                    header(XCorrelationId, streamId)
+                }
+                    .bodyAsText()
+            } catch (_: IOException) {
+                // Netty may close the connection before sending headers.
+            }
+        }
+    }
+}
+
+private suspend fun captureStreamLogs(request: suspend (String) -> Unit): List<ILoggingEvent> {
+    val streamId = Uuid.random().toString()
+    val logger = LoggerFactory.getLogger(RoutesV3Spec::class.java.packageName) as Logger
+    val appender = ListAppender<ILoggingEvent>().apply { start() }
+    logger.addAppender(appender)
+    try {
+        request(streamId)
+    } finally {
+        logger.detachAppender(appender)
+        appender.stop()
+    }
+    return appender.list.filter { "streamId=$streamId" in it.formattedMessage }
+}

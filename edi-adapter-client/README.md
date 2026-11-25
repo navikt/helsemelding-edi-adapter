@@ -61,8 +61,13 @@ earlier attempt was processed but its response was lost. Only the final attempt'
 `streamNotifications` accepts one her id or a list, plus an optional `Long` offset.
 Omitting the offset starts at the end of the stream. Each collection opens its own connection and
 reconnects from the last emitted notification, with exponential backoff and jitter capped at 30 seconds.
-EOF, transport failures and HTTP 408, 429 or 5xx trigger reconnect. Other HTTP errors and invalid data
-emit a terminal `Left`; HTTP 204 ends the stream normally. Configuration and collector exceptions propagate.
+EOF, transport failures (including DNS lookup failures) and HTTP 408, 429 or 5xx trigger reconnect.
+Other HTTP errors and invalid data emit a terminal `Left`. HTTP 204 ends the stream normally.
+Configuration and collector exceptions propagate.
+
+Each collection has a `streamId` sent to the adapter in `X-Correlation-ID`. Search both applications' logs
+for that ID to trace an interruption. The client logs each attempt and successful connection at INFO.
+A retry logs the reason and delay at WARN. A later `SSE connected` entry confirms recovery.
 
 `findLatestOffset()` returns the latest stored offset as a `Long`, or `0L` when no offsets are found:
 
