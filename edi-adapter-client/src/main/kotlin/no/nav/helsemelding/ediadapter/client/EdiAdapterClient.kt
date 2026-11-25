@@ -456,10 +456,7 @@ class HttpEdiAdapterClient(
 
                 val error = result.leftOrNull()
                 nextStep = when {
-                    result.getOrNull() == HttpStatusCode.NoContent -> {
-                        log.info { "SSE stopped $connection reason=HTTP 204" }
-                        null
-                    }
+                    result.getOrNull() == HttpStatusCode.NoContent -> null
 
                     error != null && !shouldReconnect(error) -> {
                         log.warn { "SSE stopped $connection reason=${error.streamFailureReason()}" }
@@ -519,16 +516,19 @@ class HttpEdiAdapterClient(
         try {
             val status = session.call.response.status
             if (status == HttpStatusCode.NoContent) {
-                log.info { "SSE connected $connection" }
-                session.incoming
-                    .filter { it.event == "notification" }
-                    .map { event ->
-                        val data = event.data ?: throw SerializationException("Missing notification data")
-                        json.decodeFromString(serializer, data)
-                    }
-                    .catch { raise(streamError(it)) }
-                    .collect { onNotification(it) }
+                log.info { "SSE stopped $connection reason=HTTP 204" }
+                return Right(status)
             }
+
+            log.info { "SSE connected $connection" }
+            session.incoming
+                .filter { it.event == "notification" }
+                .map { event ->
+                    val data = event.data ?: throw SerializationException("Missing notification data")
+                    json.decodeFromString(serializer, data)
+                }
+                .catch { raise(streamError(it)) }
+                .collect { onNotification(it) }
             status
         } finally {
             session.cancel()
