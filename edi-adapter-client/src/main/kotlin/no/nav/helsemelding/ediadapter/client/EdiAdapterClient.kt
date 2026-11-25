@@ -518,7 +518,7 @@ class HttpEdiAdapterClient(
         val session = catch({ openSession() }) { raise(streamError(it)) }
         try {
             val status = session.call.response.status
-            if (status != HttpStatusCode.NoContent) {
+            if (status == HttpStatusCode.NoContent) {
                 log.info { "SSE connected $connection" }
                 session.incoming
                     .filter { it.event == "notification" }
