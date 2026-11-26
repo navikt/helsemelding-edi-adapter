@@ -257,7 +257,7 @@ class RoutesV2Spec : StringSpec(
             }
         }
 
-        "POST /mshConfiguration with empty body returns 415" {
+        "POST /mshConfiguration with an empty JSON body returns 400" {
             testApplication {
                 installExternalRoutes(ediClientV2 = fakeEdiClient { error("Should not be called") })
 
@@ -266,7 +266,7 @@ class RoutesV2Spec : StringSpec(
                     setBody("")
                 }
 
-                response.status shouldBe UnsupportedMediaType
+                response.status shouldBe BadRequest
             }
         }
 

@@ -4,9 +4,9 @@ plugins {
     application
     kotlin("jvm")
     kotlin("plugin.serialization") version "2.1.10"
-    id("io.ktor.plugin") version "3.3.1"
+    id("io.ktor.plugin") version "3.6.2"
     id("org.jlleitschuh.gradle.ktlint") version "11.6.1"
-    id("com.gradleup.shadow") version "8.3.6"
+    id("com.gradleup.shadow") version "9.1.0"
 }
 
 tasks {
@@ -66,6 +66,7 @@ dependencies {
     implementation(libs.schema.kenerator.serialization)
     implementation(libs.ktor.server.netty)
     implementation(libs.kotlin.logging)
+    implementation(libs.kotlinx.serialization.datetime)
     implementation(libs.token.validation.ktor.v3)
     testImplementation(testLibs.bundles.kotest)
     testImplementation(testLibs.kotest.assertions.arrow)

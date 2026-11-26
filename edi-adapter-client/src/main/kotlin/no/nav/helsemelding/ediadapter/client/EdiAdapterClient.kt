@@ -45,6 +45,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.filter
@@ -522,6 +523,8 @@ class HttpEdiAdapterClient(
 
             log.info { "SSE connected $connection" }
             session.incoming
+                // Ktor wraps exceptions from its collector. Keep consumer failures outside the SSE reader.
+                .buffer(0)
                 .filter { it.event == "notification" }
                 .map { event ->
                     val data = event.data ?: throw SerializationException("Missing notification data")

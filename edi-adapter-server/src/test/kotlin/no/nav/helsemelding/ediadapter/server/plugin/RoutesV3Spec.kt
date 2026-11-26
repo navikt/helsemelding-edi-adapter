@@ -44,14 +44,11 @@ import io.ktor.server.routing.get
 import io.ktor.server.testing.testApplication
 import io.ktor.utils.io.ByteChannel
 import io.ktor.utils.io.readAvailable
-import io.ktor.utils.io.readUTF8Line
+import io.ktor.utils.io.readLineStrict
 import io.ktor.utils.io.writeStringUtf8
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -1972,55 +1969,51 @@ class RoutesV3Spec : StringSpec(
                     withTimeout(10000.milliseconds) {
                         prepareGet("$baseUrl$ROOT_V3/notifications/stream?herIds=42&offset=41").execute { response ->
                             val body = response.bodyAsChannel()
-                            body.readUTF8Line() shouldBe "event: notification"
-                            body.readUTF8Line() shouldBe "data: {\"offset\":42}"
-                            body.readUTF8Line() shouldBe ""
+                            body.readLineStrict() shouldBe "event: notification"
+                            body.readLineStrict() shouldBe "data: {\"offset\":42}"
+                            body.readLineStrict() shouldBe ""
                             firstEventRead.complete(Unit)
-                            body.readUTF8Line() shouldBe "event: notification"
-                            body.readUTF8Line() shouldBe "data: {\"offset\":43}"
+                            body.readLineStrict() shouldBe "event: notification"
+                            body.readLineStrict() shouldBe "data: {\"offset\":43}"
                         }
                     }
                 }
             }
         }
 
-        "GET /notifications/stream closes the upstream call when the client disconnects" {
-            val upstreamClosed = CompletableDeferred<Unit>()
-            val stream = ByteChannel(autoFlush = true)
-            stream.writeStringUtf8("event: notification\ndata: {\"offset\":42}\n\n")
-            val ediClientV3 = fakeEdiClient {
-                respond(stream, headers = headersOf(ContentTypeHeader, "text/event-stream")).also { response ->
-                    response.callContext.job.invokeOnCompletion { upstreamClosed.complete(Unit) }
-                }
-            }
-
-            ediClientV3.use {
-                withStreamingServer(ediClientV3) { baseUrl ->
-                    withTimeout(10000.milliseconds) {
-                        prepareGet("$baseUrl$ROOT_V3/notifications/stream?herIds=42").execute { response ->
-                            val body = response.bodyAsChannel()
-                            body.readUTF8Line() shouldBe "event: notification"
-                            body.readUTF8Line() shouldBe "data: {\"offset\":42}"
-                            body.readUTF8Line() shouldBe ""
-                            upstreamClosed.isCompleted shouldBe false
-                            response.cancel("Client disconnected")
-                        }
-
-                        // Keep upstream active so a write detects the disconnected client.
-                        try {
-                            while (!stream.isClosedForWrite) {
-                                stream.writeStringUtf8(": keep-alive\n\n")
-                                delay(10.milliseconds)
-                            }
-                        } catch (cause: Exception) {
-                            currentCoroutineContext().ensureActive()
-                            // The channel may close between the check and the write.
-                            if (!stream.isClosedForWrite) throw cause
-                        }
-                        upstreamClosed.await()
-                        stream.isClosedForRead shouldBe true
+        listOf("notifications/stream", "notifications/unread/stream").forEach { path ->
+            "GET /$path closes a silent upstream call when the client disconnects" {
+                val upstreamClosed = CompletableDeferred<Unit>()
+                val stream = ByteChannel(autoFlush = true)
+                stream.writeStringUtf8(": connected\n\n")
+                val ediClientV3 = fakeEdiClient {
+                    respond(stream, headers = headersOf(ContentTypeHeader, "text/event-stream")).also { response ->
+                        response.callContext.job.invokeOnCompletion { upstreamClosed.complete(Unit) }
                     }
                 }
+
+                val entries = captureStreamLogs { streamId ->
+                    ediClientV3.use {
+                        withStreamingServer(ediClientV3) { baseUrl ->
+                            withTimeout(10.seconds) {
+                                val request = prepareGet("$baseUrl$ROOT_V3/$path?herIds=42") {
+                                    header(XCorrelationId, streamId)
+                                }
+                                request.execute { response ->
+                                    val body = response.bodyAsChannel()
+                                    body.readLineStrict() shouldBe ": connected"
+                                    body.readLineStrict() shouldBe ""
+                                    upstreamClosed.isCompleted shouldBe false
+                                    response.cancel("Client disconnected")
+                                }
+
+                                upstreamClosed.await()
+                                stream.isClosedForRead shouldBe true
+                            }
+                        }
+                    }
+                }
+                entries.count { "SSE cancelled" in it.formattedMessage } shouldBe 1
             }
         }
 
@@ -2038,9 +2031,9 @@ class RoutesV3Spec : StringSpec(
                             response.status shouldBe OK
                             response.contentType() shouldBe ContentType.Text.EventStream
                             val body = response.bodyAsChannel()
-                            body.readUTF8Line() shouldBe "event: notification"
-                            body.readUTF8Line() shouldBe "data: {\"offset\":42}"
-                            body.readUTF8Line() shouldBe ""
+                            body.readLineStrict() shouldBe "event: notification"
+                            body.readLineStrict() shouldBe "data: {\"offset\":42}"
+                            body.readLineStrict() shouldBe ""
 
                             stream.cancel(IOException("Upstream stream failed"))
 

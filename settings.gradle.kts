@@ -15,7 +15,7 @@ dependencyResolutionManagement {
             version("jwt", "4.6.2")
             version("nimbus-jwt", "9.32")
             version("suspendapp", "0.5.0")
-            version("ktor", "3.3.1")
+            version("ktor", "3.6.2")
             version("ktor-swagger-ui", "5.4.0")
             version("ktor-openapi", "5.4.0")
             version("schema-kenerator-serialization", "2.5.0")
@@ -84,15 +84,14 @@ dependencyResolutionManagement {
 
         create("testLibs") {
             version("arrow", "2.0.0")
-            version("ktor", "3.3.1")
-            version("ktor-server-test", "3.3.1")
+            version("ktor", "3.6.2")
             version("kotest", "5.9.1")
             version("mock-oauth2", "2.1.2")
             version("testcontainers", "1.18.1")
             version("kotest-extensions", "2.0.2")
             version("turbine", "1.2.0")
 
-            library("ktor-server-test-host", "io.ktor", "ktor-server-test-host").versionRef("ktor-server-test")
+            library("ktor-server-test-host", "io.ktor", "ktor-server-test-host").versionRef("ktor")
             library("ktor-client-mock", "io.ktor", "ktor-client-mock").versionRef("ktor")
             library("mock-oauth2-server", "no.nav.security", "mock-oauth2-server").versionRef("mock-oauth2")
 
