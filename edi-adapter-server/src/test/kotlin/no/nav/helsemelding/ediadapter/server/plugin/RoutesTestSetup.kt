@@ -19,7 +19,6 @@ import io.ktor.server.auth.Authentication
 import io.ktor.server.auth.authenticate
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
-import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.ApplicationTestBuilder
@@ -64,9 +63,7 @@ internal fun TestApplicationBuilder.installExternalRoutes(
     useAuthentication: Boolean = false,
     ediClientV3: HttpClient = fakeEdiClient { error("Should not be called") }
 ) {
-    install(ContentNegotiation) {
-        json()
-    }
+    application { configureContentNegotiation() }
 
     val issuer = config().azureAuth.issuer.value
 

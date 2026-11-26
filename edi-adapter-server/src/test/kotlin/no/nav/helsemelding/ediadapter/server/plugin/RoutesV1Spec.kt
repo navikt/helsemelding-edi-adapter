@@ -469,7 +469,7 @@ class RoutesV1Spec : StringSpec(
             }
         }
 
-        "POST /messages with empty body returns 415" {
+        "POST /messages with an empty JSON body returns 400" {
             testApplication {
                 installExternalRoutes(fakeEdiClient { error("Should not be called") })
 
@@ -478,7 +478,7 @@ class RoutesV1Spec : StringSpec(
                     setBody("")
                 }
 
-                response.status shouldBe UnsupportedMediaType
+                response.status shouldBe BadRequest
             }
         }
 

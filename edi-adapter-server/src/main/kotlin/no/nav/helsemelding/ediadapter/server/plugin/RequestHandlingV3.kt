@@ -31,6 +31,7 @@ import io.ktor.server.routing.RoutingContext
 import io.ktor.utils.io.InternalAPI
 import io.ktor.utils.io.readAvailable
 import io.ktor.utils.io.writeFully
+import kotlinx.coroutines.ensureActive
 import no.nav.helsemelding.ediadapter.model.v3.MshApiProblemDetails
 import no.nav.helsemelding.ediadapter.server.MessageError
 import no.nav.helsemelding.ediadapter.server.toContent
@@ -57,20 +58,21 @@ internal suspend fun RoutingContext.handleV3Stream(
     body: suspend Raise<MessageError>.() -> HttpStatement
 ) {
     val relay = SseRelay(call)
-    Either.catch {
-        onCancel(
-            { recover({ relay.forward(body()) }) { error: MessageError -> relay.reject(error) } },
-            { log.info { relay.endReason("cancelled") } }
-        )
-    }
-        .onLeft { cause ->
-            val message = relay.endReason("failed", cause)
-            call.handleV3Exception(
-                cause,
-                logCommitted = { log.warn { message } },
-                logUnexpected = { log.error { message } }
-            )
+    onCancel({
+        Either.catch {
+            recover({ relay.forward(body()) }) { error: MessageError -> relay.reject(error) }
         }
+            .onLeft { cause ->
+                // Netty can surface the socket error while unwinding a cancelled request.
+                call.coroutineContext.ensureActive()
+                val message = relay.endReason("failed", cause)
+                call.handleV3Exception(
+                    cause,
+                    logCommitted = { log.warn { message } },
+                    logUnexpected = { log.error { message } }
+                )
+            }
+    }) { log.info { relay.endReason("cancelled") } }
 }
 
 private class SseRelay(private val call: ApplicationCall) {

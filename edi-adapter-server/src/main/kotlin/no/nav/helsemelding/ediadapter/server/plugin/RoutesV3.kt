@@ -14,6 +14,7 @@ import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import io.ktor.server.http.HttpRequestLifecycle
 import io.ktor.server.request.receive
 import io.ktor.server.routing.Route
 import no.nav.helsemelding.ediadapter.model.v3.DeleteNotificationsRequest
@@ -92,6 +93,7 @@ internal fun Route.v3Routes(ediClient: HttpClient) {
             }
         )
     }
+        .install(HttpRequestLifecycle) { cancelCallOnClose = true }
 
     get(GET_NOTIFICATIONS, getNotificationsDocs) {
         handleV3Request(
@@ -113,6 +115,7 @@ internal fun Route.v3Routes(ediClient: HttpClient) {
             }
         )
     }
+        .install(HttpRequestLifecycle) { cancelCallOnClose = true }
 
     post(POST_MESSAGE, postMessageDocs) {
         handleV3Request(
