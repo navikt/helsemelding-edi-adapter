@@ -10,6 +10,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.ktor.client.call.body
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.plugins.HttpTimeoutCapability
 import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
@@ -1041,6 +1042,7 @@ class RoutesV3Spec : StringSpec(
             val ediClientV3 = fakeEdiClient { request ->
                 request.method shouldBe HttpMethod.Get
                 request.url.fullPath shouldBe "/notifications/unread/stream?HerIds=42&HerIds=1337"
+                request.shouldHaveConfiguredSseIdleTimeout()
                 request.headers[Accept] shouldBe "text/event-stream"
                 respond(payload, headers = headersOf(ContentTypeHeader, "text/event-stream"))
             }
@@ -1937,6 +1939,7 @@ class RoutesV3Spec : StringSpec(
         "GET /notifications/stream forwards her ids, offset and SSE accept header" {
             val ediClientV3 = fakeEdiClient { request ->
                 request.url.fullPath shouldBe "/notifications/stream?HerIds=42&Offset=41"
+                request.shouldHaveConfiguredSseIdleTimeout()
                 request.headers[Accept] shouldBe "text/event-stream"
                 respond("", headers = headersOf(ContentTypeHeader, "text/event-stream"))
             }
@@ -2111,6 +2114,11 @@ class RoutesV3Spec : StringSpec(
 )
 
 private inline fun <reified T> HttpRequestData.body(): T = JsonUtil.decodeFromString((body as TextContent).text)
+
+private fun HttpRequestData.shouldHaveConfiguredSseIdleTimeout() {
+    val expectedMillis = config().httpClient.sseIdleTimeout.inWholeMilliseconds
+    getCapabilityOrNull(HttpTimeoutCapability)?.socketTimeoutMillis shouldBe expectedMillis
+}
 
 private suspend fun requestUnreadStream(source: ByteChannel, streamId: String) {
     fakeEdiClient { respond(source, headers = headersOf(ContentTypeHeader, "text/event-stream")) }.use { upstream ->
